@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Hermes Tracker — Repositories{% endblock %}
+{% block tabs %}
+<nav class="tabs" aria-label="Site navigation">
+  {% if cgit_base %}<a href="{{ cgit_base }}">index</a>{% endif %}
+  <a href="{{ request.url_for('repo_list') }}" class="active">todos</a>
+</nav>
+{% endblock %}
+{% block content %}
+{% if repos %}
+<table class="list" aria-label="Repository list">
+  <thead>
+    <tr>
+      <th>NAME</th>
+      <th>DESCRIPTION</th>
+      <th>OPEN</th>
+      <th>UPDATED</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for repo in repos %}
+    <tr>
+      <td><a href="{{ request.url_for('repo_detail', slug=repo.slug) }}">{{ repo.name }}</a></td>
+      <td class="description">
+        {% if repo.description %}{{ repo.description | markdown }}{% else %}<span class="meta-none">—</span>{% endif %}
+      </td>
+      <td class="meta-open">{% if repo.summary.open_count %}{{ repo.summary.open_count }}{% else %}<span class="meta-none">0</span>{% endif %}</td>
+      <td class="meta-updated">{% if repo.summary.updated_at %}{{ repo.summary.updated_at[:10] }}{% else %}<span class="meta-none">—</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="empty">No repositories.</p>
+{% endif %}
+{% endblock %}

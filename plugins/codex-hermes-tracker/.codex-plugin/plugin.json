@@ -1,0 +1,23 @@
+{
+  "name": "codex-hermes-tracker",
+  "version": "0.1.0",
+  "description": "Read and update Hermes Tracker TODOs from Codex",
+  "author": {
+    "name": "Thanos Apollo"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Hermes Tracker",
+    "shortDescription": "Collaborate with Hermes agents through shared TODOs.",
+    "longDescription": "Read, create, claim, update, comment on, link, and close durable Hermes Tracker TODOs from Codex.",
+    "developerName": "Thanos Apollo",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write", "Collaboration"],
+    "defaultPrompt": [
+      "Show open tracker TODOs for this repository.",
+      "Comment on a tracker TODO with my findings.",
+      "Create a tracker TODO for this work."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

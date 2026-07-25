@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}Hermes Tracker{% endblock %}</title>
+  <link rel="stylesheet" href="{{ request.url_for('static', path='tracker.css') }}?v={{ request.app.state.asset_version }}">
+</head>
+<body>
+  <div id="cgit">
+  <header class="header">
+    <span class="logo"><a href="{{ request.url_for('repo_list') }}"><img src="{{ request.url_for('static', path='chi-rho.svg') }}" alt="Chi-Rho"></a></span>
+    <span class="main"><a href="{{ request.url_for('repo_list') }}">Hermes Tracker</a></span>
+    <span class="sub">Public read-only TODO tracker</span>
+  </header>
+  {% block tabs %}{% endblock %}
+  <main class="content">{% block content %}{% endblock %}</main>
+  </div>
+</body>
+</html>

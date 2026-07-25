@@ -1,0 +1,90 @@
+[project]
+name = "hermes-tracker"
+version = "0.1.0"
+description = "Deliberately small agent-only TODO tracker with a public read-only frontend."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Thanos Apollo" }]
+dependencies = [
+    "fastapi>=0.115.0,<0.120.0",
+    "uvicorn[standard]>=0.30.0,<0.36.0",
+    "jinja2>=3.1.0,<4.0.0",
+    "pydantic>=2.5.0,<3.0.0",
+    "mistune>=3.0,<4.0",
+    "bleach>=6.1,<7.0",
+]
+
+[project.urls]
+Homepage = "https://todos.thanosapollo.org"
+Repository = "https://git.thanosapollo.org/hermes-tracker"
+Issues = "https://todos.thanosapollo.org/r/hermes-tracker"
+
+[project.scripts]
+hermes-tracker-sync-public-repos = "hermes_tracker.sync_repos:main"
+hermes-tracker-token = "hermes_tracker.token_cli:main"
+hermes-tracker-mcp = "hermes_tracker.mcp:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0,<9.0.0",
+    "httpx>=0.25.0,<0.29.0",
+    "ruff>=0.6.0,<0.10.0",
+    "mypy>=1.10.0,<2.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hermes_tracker"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.git",
+    "/.hermes",
+    "/.plans",
+    "/.worktrees",
+    "/.venv",
+    "/.pytest_cache",
+    "/.mypy_cache",
+    "/.ruff_cache",
+    "/build",
+    "/dist",
+    "**/__pycache__",
+    "**/*.py[cod]",
+    "**/*.db",
+    "**/*.db-journal",
+    "**/*.sqlite",
+    "**/*.sqlite-journal",
+    "**/*.pem",
+    "**/*.key",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+ignore_missing_imports = true
+files = ["src/hermes_tracker"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.uv]
+package = true

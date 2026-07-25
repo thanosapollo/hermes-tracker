@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ repo.name }} — Hermes Tracker{% endblock %}
+
+{% block tabs %}
+<nav class="tabs" aria-label="Repository navigation">
+  {% for item in navigation %}<a href="{{ item.url }}"{% if item.label == "todos" %} class="active"{% endif %}>{{ item.label }}</a>{% endfor %}
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="{{ request.url_for('repo_list') }}">index</a> : <a href="{{ request.url_for('repo_detail', slug=repo.slug) }}">{{ repo.slug }}</a>
+</div>
+
+{% if repo.description %}
+<div class="markdown repo-prose">{{ repo.description | markdown }}</div>
+{% endif %}
+
+<h3>TODOs{% if has_todos %} <span class="muted">({{ todos | length }})</span>{% endif %}</h3>
+{% if todos %}
+<table class="list" aria-label="TODO list">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>TITLE</th>
+      <th>STATUS</th>
+      <th>PRIORITY</th>
+      <th>ASSIGNEE</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for todo in todos %}
+    <tr>
+      <td><a href="{{ request.url_for('todo_detail', slug=repo.slug, number=todo.number) }}">#{{ todo.number }}</a></td>
+      <td>{{ todo.title }}</td>
+      <td><span class="status" style="--status-color: {{ todo.status | status_color }}">{{ todo.status }}</span></td>
+      <td>{{ todo.priority }}</td>
+      <td>{{ todo.assignee or "—" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="empty">No TODOs in this repository.</p>
+{% endif %}
+{% endblock %}

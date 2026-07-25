@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+# Local tooling
+.hermes/
+.plans/
+.worktrees/
+.env
+.env.*
+*.pem
+*.key
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store

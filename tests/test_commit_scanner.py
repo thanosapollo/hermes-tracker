@@ -213,6 +213,66 @@ def test_late_repository_preflight_failure_leaves_all_repositories_unchanged(
     assert load_state(state_path) == initial_state
 
 
+def test_scan_freezes_cursor_identity_before_tracker_mutations(
+    git_repository: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous = _git(git_repository, "rev-parse", "HEAD")
+    tip = _commit(git_repository, "Fixes #1")
+    replacement = tmp_path / "replacement"
+    replacement.mkdir()
+    _git(replacement, "init", "-b", "master")
+    _git(replacement, "config", "user.name", "Test")
+    _git(replacement, "config", "user.email", "test@example.invalid")
+    replacement_tip = _commit(replacement, "Initial")
+    git_path = tmp_path / "repository.git"
+    git_path.symlink_to(git_repository / ".git")
+    config = RepositoryConfig("project", git_path, "refs/heads/master")
+    original_key = config.state_key
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            [
+                {
+                    "tracker_slug": config.tracker_slug,
+                    "git_path": str(config.git_path),
+                    "canonical_ref": config.canonical_ref,
+                }
+            ]
+        )
+    )
+    state_path = tmp_path / "state.json"
+    save_state(state_path, {original_key: previous})
+
+    class RetargetingClient(RecordingClient):
+        def close_from_directive(
+            self, repo_slug: str, number: int, commit_sha: str, evidence: str
+        ) -> None:
+            super().close_from_directive(repo_slug, number, commit_sha, evidence)
+            git_path.unlink()
+            git_path.symlink_to(replacement / ".git")
+
+    client = RetargetingClient()
+    monkeypatch.setenv("HERMES_TRACKER_AUTH_TOKEN", "secret")
+    monkeypatch.setattr("hermes_tracker.commit_scanner.TrackerClient", lambda *_args: client)
+
+    assert main(["--config", str(config_path), "--state", str(state_path)]) == 0
+    assert load_state(state_path) == {original_key: tip}
+
+    replacement_key = config.state_key
+    baseline_client = RecordingClient()
+    monkeypatch.setattr(
+        "hermes_tracker.commit_scanner.TrackerClient", lambda *_args: baseline_client
+    )
+    assert main(["--config", str(config_path), "--state", str(state_path)]) == 0
+    assert baseline_client.calls == []
+    assert load_state(state_path) == {
+        original_key: tip,
+        replacement_key: replacement_tip,
+    }
+
+
 def test_git_process_failure_is_sanitized(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     def fail(*args, **kwargs):
         raise OSError("private path")

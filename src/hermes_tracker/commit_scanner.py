@@ -85,7 +85,10 @@ class RepositoryConfig:
 
     @property
     def state_key(self) -> str:
-        return "\0".join((self.tracker_slug, str(self.git_path.resolve()), self.canonical_ref))
+        return self._state_key_for(self.git_path.resolve())
+
+    def _state_key_for(self, git_path: Path) -> str:
+        return "\0".join((self.tracker_slug, str(git_path), self.canonical_ref))
 
 
 class ClosureClient(Protocol):
@@ -381,21 +384,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         configs = load_config(args.config)
         state = load_state(args.state)
         client = TrackerClient(args.base_url, token)
-        plans = [
-            (
+        plans: list[tuple[str, ScanPlan]] = []
+        for config in configs:
+            git_path = config.git_path.resolve()
+            state_key = config._state_key_for(git_path)
+            plan = preflight_repository(
                 config,
-                preflight_repository(
-                    config,
-                    state.get(config.state_key),
-                    GitRepository(config.git_path),
-                    rebaseline=args.rebaseline,
-                ),
+                state.get(state_key),
+                GitRepository(git_path),
+                rebaseline=args.rebaseline,
             )
-            for config in configs
-        ]
+            plans.append((state_key, plan))
         next_state = state.copy()
-        for config, plan in plans:
-            next_state[config.state_key] = apply_scan_plan(plan, client)
+        for state_key, plan in plans:
+            next_state[state_key] = apply_scan_plan(plan, client)
         save_state(args.state, next_state)
     except (ScanError, ValueError) as exc:
         reason = str(exc) if isinstance(exc, ScanError) else "invalid-settings"

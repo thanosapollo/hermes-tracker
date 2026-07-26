@@ -58,6 +58,20 @@ class Commit:
 
 
 @dataclass(frozen=True)
+class PlannedClosure:
+    repo_slug: str
+    number: int
+    commit_sha: str
+    evidence: str
+
+
+@dataclass(frozen=True)
+class ScanPlan:
+    next_sha: str
+    closures: tuple[PlannedClosure, ...]
+
+
+@dataclass(frozen=True)
 class RepositoryConfig:
     tracker_slug: str
     git_path: Path
@@ -133,6 +147,43 @@ class GitRepository:
         return [Commit(sha, self._run("show", "-s", "--format=%B", sha).stdout) for sha in shas]
 
 
+def preflight_repository(
+    config: RepositoryConfig,
+    previous_sha: str | None,
+    repository: GitRepository,
+    *,
+    rebaseline: bool = False,
+) -> ScanPlan:
+    """Validate one repository range and return its mutation-free scan plan."""
+    tip = repository.tip(config.canonical_ref)
+    if previous_sha is None or rebaseline:
+        return ScanPlan(tip, ())
+    if previous_sha == tip:
+        return ScanPlan(tip, ())
+    if not repository.is_ancestor(previous_sha, tip):
+        raise ScanError("non-fast-forward-requires-rebaseline")
+
+    closures: list[PlannedClosure] = []
+    for commit in repository.commits(previous_sha, tip):
+        for directive in parse_directives(commit.message):
+            repo_slug = directive.repo_slug or config.tracker_slug
+            evidence = f"Canonical commit directive: {directive.keyword} {directive.reference}."
+            closures.append(PlannedClosure(repo_slug, directive.number, commit.sha, evidence))
+    return ScanPlan(tip, tuple(closures))
+
+
+def apply_scan_plan(plan: ScanPlan, client: ClosureClient) -> str:
+    """Apply a validated plan; return its cursor only after every closure succeeds."""
+    for closure in plan.closures:
+        client.close_from_directive(
+            closure.repo_slug,
+            closure.number,
+            closure.commit_sha,
+            closure.evidence,
+        )
+    return plan.next_sha
+
+
 def scan_repository(
     config: RepositoryConfig,
     previous_sha: str | None,
@@ -142,20 +193,8 @@ def scan_repository(
     rebaseline: bool = False,
 ) -> str:
     """Scan one fast-forward range; return new cursor only after every closure succeeds."""
-    tip = repository.tip(config.canonical_ref)
-    if previous_sha is None or rebaseline:
-        return tip
-    if previous_sha == tip:
-        return tip
-    if not repository.is_ancestor(previous_sha, tip):
-        raise ScanError("non-fast-forward-requires-rebaseline")
-
-    for commit in repository.commits(previous_sha, tip):
-        for directive in parse_directives(commit.message):
-            repo_slug = directive.repo_slug or config.tracker_slug
-            evidence = f"Canonical commit directive: {directive.keyword} {directive.reference}."
-            client.close_from_directive(repo_slug, directive.number, commit.sha, evidence)
-    return tip
+    plan = preflight_repository(config, previous_sha, repository, rebaseline=rebaseline)
+    return apply_scan_plan(plan, client)
 
 
 class TrackerClient:
@@ -342,15 +381,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         configs = load_config(args.config)
         state = load_state(args.state)
         client = TrackerClient(args.base_url, token)
-        for config in configs:
-            state[config.state_key] = scan_repository(
+        plans = [
+            (
                 config,
-                state.get(config.state_key),
-                GitRepository(config.git_path),
-                client,
-                rebaseline=args.rebaseline,
+                preflight_repository(
+                    config,
+                    state.get(config.state_key),
+                    GitRepository(config.git_path),
+                    rebaseline=args.rebaseline,
+                ),
             )
-            save_state(args.state, state)
+            for config in configs
+        ]
+        next_state = state.copy()
+        for config, plan in plans:
+            next_state[config.state_key] = apply_scan_plan(plan, client)
+        save_state(args.state, next_state)
     except (ScanError, ValueError) as exc:
         reason = str(exc) if isinstance(exc, ScanError) else "invalid-settings"
         print(json.dumps({"action": "error", "reason": reason}, sort_keys=True))

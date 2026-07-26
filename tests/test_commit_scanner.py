@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import socket
 import subprocess
 import threading
@@ -19,6 +20,7 @@ from hermes_tracker.commit_scanner import (
     ScanError,
     TrackerClient,
     load_state,
+    main,
     parse_directives,
     save_state,
     scan_repository,
@@ -161,6 +163,54 @@ def test_non_fast_forward_fails_closed_until_explicit_rebaseline(git_repository:
     client = RecordingClient()
     assert scan_repository(config, baseline, repository, client, rebaseline=True) == rewritten
     assert client.calls == []
+
+
+def test_late_repository_preflight_failure_leaves_all_repositories_unchanged(
+    git_repository: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_config = RepositoryConfig("first", git_repository / ".git", "refs/heads/master")
+    first_baseline = _git(git_repository, "rev-parse", "HEAD")
+    _commit(git_repository, "Fixes #1")
+
+    second = tmp_path / "second"
+    second.mkdir()
+    _git(second, "init", "-b", "master")
+    _git(second, "config", "user.name", "Test")
+    _git(second, "config", "user.email", "test@example.invalid")
+    _commit(second, "Initial")
+    second_baseline = _commit(second, "Baseline")
+    _git(second, "reset", "--hard", f"{second_baseline}^")
+    _commit(second, "Replacement")
+    second_config = RepositoryConfig("second", second / ".git", "refs/heads/master")
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            [
+                {
+                    "tracker_slug": config.tracker_slug,
+                    "git_path": str(config.git_path),
+                    "canonical_ref": config.canonical_ref,
+                }
+                for config in (first_config, second_config)
+            ]
+        )
+    )
+    state_path = tmp_path / "state.json"
+    initial_state = {
+        first_config.state_key: first_baseline,
+        second_config.state_key: second_baseline,
+    }
+    save_state(state_path, initial_state)
+    client = RecordingClient()
+    monkeypatch.setenv("HERMES_TRACKER_AUTH_TOKEN", "secret")
+    monkeypatch.setattr("hermes_tracker.commit_scanner.TrackerClient", lambda *_args: client)
+
+    assert main(["--config", str(config_path), "--state", str(state_path)]) == 1
+    assert client.calls == []
+    assert load_state(state_path) == initial_state
 
 
 def test_git_process_failure_is_sanitized(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

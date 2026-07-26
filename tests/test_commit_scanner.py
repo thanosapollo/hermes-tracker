@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import socket
 import subprocess
+import threading
 import urllib.error
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
 
@@ -271,6 +274,76 @@ def test_tracker_client_disables_environment_proxies(monkeypatch: pytest.MonkeyP
         handler for handler in handlers if isinstance(handler, urllib.request.ProxyHandler)
     )
     assert proxy_handler.proxies == {}
+
+
+def test_tracker_client_rejects_cross_origin_redirect_without_forwarding_token(
+    monkeypatch: pytest.MonkeyPatch,
+    git_repository: Path,
+) -> None:
+    received_authorization: list[str | None] = []
+
+    class DestinationHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            received_authorization.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"active"}')
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    destination = ThreadingHTTPServer(("127.0.0.1", 0), DestinationHandler)
+    destination_port = destination.server_address[1]
+
+    class RedirectHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(302)
+            self.send_header("Location", f"http://example.invalid:{destination_port}/capture")
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    redirect = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+    redirect_port = redirect.server_address[1]
+    threads = [
+        threading.Thread(target=server.serve_forever, daemon=True)
+        for server in (destination, redirect)
+    ]
+    for thread in threads:
+        thread.start()
+
+    original_getaddrinfo = socket.getaddrinfo
+
+    def getaddrinfo(host, *args, **kwargs):
+        if host == "example.invalid":
+            host = "127.0.0.1"
+        return original_getaddrinfo(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    previous = _git(git_repository, "rev-parse", "HEAD")
+    _commit(git_repository, "Fixes #1")
+    config = RepositoryConfig("repo", git_repository / ".git", "refs/heads/master")
+    state = {config.state_key: previous}
+    try:
+        client = TrackerClient(f"http://127.0.0.1:{redirect_port}", "secret")
+        with pytest.raises(ScanError, match="tracker-read-failed"):
+            state[config.state_key] = scan_repository(
+                config,
+                state[config.state_key],
+                GitRepository(config.git_path),
+                client,
+            )
+    finally:
+        for server in (redirect, destination):
+            server.shutdown()
+            server.server_close()
+        for thread in threads:
+            thread.join()
+
+    assert received_authorization == []
+    assert state == {config.state_key: previous}
 
 
 def test_state_round_trips_atomically(tmp_path: Path) -> None:

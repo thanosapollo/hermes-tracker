@@ -35,7 +35,12 @@ _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
 class ScanError(RuntimeError):
-    """A safe scanner failure that must leave the repository cursor unchanged."""
+    """Fail-closed scanner error with a public-safe category message."""
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 @dataclass(frozen=True)
@@ -180,7 +185,9 @@ class TrackerClient:
         self._base_url = base_url.rstrip("/")
         self._token = token
         self._timeout = timeout
-        self._opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self._opener = opener or urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), _NoRedirectHandler()
+        )
 
     def _request(
         self,

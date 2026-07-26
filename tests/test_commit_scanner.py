@@ -165,6 +165,58 @@ def test_non_fast_forward_fails_closed_until_explicit_rebaseline(git_repository:
     assert client.calls == []
 
 
+def test_global_rebaseline_only_skips_rewritten_repository_history(
+    git_repository: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rewritten_config = RepositoryConfig("rewritten", git_repository / ".git", "refs/heads/master")
+    rewritten_baseline = _commit(git_repository, "Old history")
+    _git(git_repository, "reset", "--hard", f"{rewritten_baseline}^")
+    rewritten_tip = _commit(git_repository, "Replacement")
+
+    healthy = tmp_path / "healthy"
+    healthy.mkdir()
+    _git(healthy, "init", "-b", "master")
+    _git(healthy, "config", "user.name", "Test")
+    _git(healthy, "config", "user.email", "test@example.invalid")
+    healthy_baseline = _commit(healthy, "Initial")
+    healthy_tip = _commit(healthy, "Fixes #2")
+    healthy_config = RepositoryConfig("healthy", healthy / ".git", "refs/heads/master")
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            [
+                {
+                    "tracker_slug": config.tracker_slug,
+                    "git_path": str(config.git_path),
+                    "canonical_ref": config.canonical_ref,
+                }
+                for config in (rewritten_config, healthy_config)
+            ]
+        )
+    )
+    state_path = tmp_path / "state.json"
+    save_state(
+        state_path,
+        {
+            rewritten_config.state_key: rewritten_baseline,
+            healthy_config.state_key: healthy_baseline,
+        },
+    )
+    client = RecordingClient()
+    monkeypatch.setenv("HERMES_TRACKER_AUTH_TOKEN", "secret")
+    monkeypatch.setattr("hermes_tracker.commit_scanner.TrackerClient", lambda *_args: client)
+
+    assert main(["--config", str(config_path), "--state", str(state_path), "--rebaseline"]) == 0
+    assert client.calls == [("healthy", 2, healthy_tip, "Canonical commit directive: fixes #2.")]
+    assert load_state(state_path) == {
+        rewritten_config.state_key: rewritten_tip,
+        healthy_config.state_key: healthy_tip,
+    }
+
+
 def test_late_repository_preflight_failure_leaves_all_repositories_unchanged(
     git_repository: Path,
     tmp_path: Path,

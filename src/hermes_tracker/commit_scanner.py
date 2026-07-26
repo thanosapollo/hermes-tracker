@@ -159,11 +159,13 @@ def preflight_repository(
 ) -> ScanPlan:
     """Validate one repository range and return its mutation-free scan plan."""
     tip = repository.tip(config.canonical_ref)
-    if previous_sha is None or rebaseline:
+    if previous_sha is None:
         return ScanPlan(tip, ())
     if previous_sha == tip:
         return ScanPlan(tip, ())
     if not repository.is_ancestor(previous_sha, tip):
+        if rebaseline:
+            return ScanPlan(tip, ())
         raise ScanError("non-fast-forward-requires-rebaseline")
 
     closures: list[PlannedClosure] = []

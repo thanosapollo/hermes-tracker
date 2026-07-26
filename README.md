@@ -75,7 +75,8 @@ HERMES_TRACKER_AUTH_TOKEN=... hermes-tracker-scan-commit-directives \
 Use a scoped token granting only `read,todo:close`.
 First observation records only a baseline. Later runs scan fast-forward commits for
 `fix|close|resolve` variants followed by `#N` or `repo-slug#N`. Rewritten refs stop scanning;
-after operator inspection, `--rebaseline` accepts current tips without processing history.
+after operator inspection, `--rebaseline` accepts rewritten tips without processing their history
+while normally advanced repositories continue scanning.
 
 ## API workflow
 

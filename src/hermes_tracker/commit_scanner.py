@@ -122,13 +122,17 @@ class GitRepository:
         self._git_path = git_path
 
     def _run(
-        self, *args: str, allowed_codes: set[int] | None = None
+        self,
+        *args: str,
+        allowed_codes: set[int] | None = None,
+        stdin: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         try:
             result = subprocess.run(
                 ["git", "--git-dir", str(self._git_path), *args],
                 capture_output=True,
                 text=True,
+                input=stdin,
                 check=False,
             )
         except (OSError, UnicodeError) as exc:
@@ -144,6 +148,14 @@ class GitRepository:
     def is_ancestor(self, old_sha: str, new_sha: str) -> bool:
         result = self._run("merge-base", "--is-ancestor", old_sha, new_sha, allowed_codes={0, 1})
         return result.returncode == 0
+
+    def has_commit(self, sha: str) -> bool:
+        fields = self._run("cat-file", "--batch-check", stdin=f"{sha}\n").stdout.split()
+        if fields == [sha, "missing"]:
+            return False
+        if len(fields) == 3 and fields[:2] == [sha, "commit"]:
+            return True
+        raise ScanError("git-command-failed")
 
     def commits(self, old_sha: str, new_sha: str) -> list[Commit]:
         shas = self._run("rev-list", "--reverse", f"{old_sha}..{new_sha}").stdout.splitlines()
@@ -162,6 +174,8 @@ def preflight_repository(
     if previous_sha is None:
         return ScanPlan(tip, ())
     if previous_sha == tip:
+        return ScanPlan(tip, ())
+    if rebaseline and not repository.has_commit(previous_sha):
         return ScanPlan(tip, ())
     if not repository.is_ancestor(previous_sha, tip):
         if rebaseline:

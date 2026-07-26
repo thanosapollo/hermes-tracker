@@ -174,6 +174,8 @@ def test_global_rebaseline_only_skips_rewritten_repository_history(
     rewritten_baseline = _commit(git_repository, "Old history")
     _git(git_repository, "reset", "--hard", f"{rewritten_baseline}^")
     rewritten_tip = _commit(git_repository, "Replacement")
+    _git(git_repository, "reflog", "expire", "--expire=now", "--all")
+    _git(git_repository, "gc", "--prune=now")
 
     healthy = tmp_path / "healthy"
     healthy.mkdir()
@@ -198,16 +200,18 @@ def test_global_rebaseline_only_skips_rewritten_repository_history(
         )
     )
     state_path = tmp_path / "state.json"
-    save_state(
-        state_path,
-        {
-            rewritten_config.state_key: rewritten_baseline,
-            healthy_config.state_key: healthy_baseline,
-        },
-    )
+    initial_state = {
+        rewritten_config.state_key: rewritten_baseline,
+        healthy_config.state_key: healthy_baseline,
+    }
+    save_state(state_path, initial_state)
     client = RecordingClient()
     monkeypatch.setenv("HERMES_TRACKER_AUTH_TOKEN", "secret")
     monkeypatch.setattr("hermes_tracker.commit_scanner.TrackerClient", lambda *_args: client)
+
+    assert main(["--config", str(config_path), "--state", str(state_path)]) == 1
+    assert client.calls == []
+    assert load_state(state_path) == initial_state
 
     assert main(["--config", str(config_path), "--state", str(state_path), "--rebaseline"]) == 0
     assert client.calls == [("healthy", 2, healthy_tip, "Canonical commit directive: fixes #2.")]

@@ -240,6 +240,19 @@ class TestClose:
         assert data["closed_by"] == "codex"
         assert data["closed_at"] == data["updated_at"]
 
+    def test_close_accepts_full_sha256_commit(self, client) -> None:
+        _create_repo(client)
+        _create_todo(client)
+
+        response = client.post(
+            "/api/v1/repos/proj/todos/1/close",
+            json={"verification_output": "directive", "closing_commit": "a" * 64},
+            headers=AUTH_HEADERS,
+        )
+
+        assert response.status_code == 200
+        assert response.json()["closing_commit"] == "a" * 64
+
     def test_actorless_close_remains_valid(self, client) -> None:
         _create_repo(client)
         _create_todo(client)

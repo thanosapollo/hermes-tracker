@@ -22,6 +22,7 @@ Repository = "https://git.thanosapollo.org/hermes-tracker"
 Issues = "https://todos.thanosapollo.org/r/hermes-tracker"
 
 [project.scripts]
+hermes-tracker-scan-commit-directives = "hermes_tracker.commit_scanner:main"
 hermes-tracker-sync-public-repos = "hermes_tracker.sync_repos:main"
 hermes-tracker-token = "hermes_tracker.token_cli:main"
 hermes-tracker-mcp = "hermes_tracker.mcp:main"

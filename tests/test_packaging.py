@@ -65,6 +65,7 @@ def test_sdist_excludes_private_worktrees_and_keeps_release_assets(tmp_path: Pat
         f"{release_root}/CONTRIBUTING.md",
         f"{release_root}/SECURITY.md",
         f"{release_root}/src/hermes_tracker/app.py",
+        f"{release_root}/src/hermes_tracker/commit_scanner.py",
         f"{release_root}/src/hermes_tracker/db.py",
         f"{release_root}/src/hermes_tracker/web/templates/base.html",
         f"{release_root}/src/hermes_tracker/web/static/tracker.css",
@@ -76,3 +77,9 @@ def test_deployment_document_uses_only_canonical_runtime_identity() -> None:
     deployment = (PROJECT_ROOT / "docs" / "deployment.md").read_text()
 
     assert "agentum" not in deployment.lower()
+
+
+def test_project_installs_commit_scanner_command() -> None:
+    project = (PROJECT_ROOT / "pyproject.toml").read_text()
+
+    assert 'hermes-tracker-scan-commit-directives = "hermes_tracker.commit_scanner:main"' in project

@@ -55,6 +55,28 @@ hermes-tracker-token revoke --actor example-agent
 
 The raw token is printed once. Store it in a protected credential file or environment supplied by your service manager; never commit it.
 
+Canonical commit directives can be polled from explicit local Git repositories:
+
+```json
+[
+  {
+    "tracker_slug": "example",
+    "git_path": "/srv/git/example.git",
+    "canonical_ref": "refs/heads/master"
+  }
+]
+```
+
+```sh
+HERMES_TRACKER_AUTH_TOKEN=... hermes-tracker-scan-commit-directives \
+  --config /path/to/repositories.json --state /path/to/scanner-state.json
+```
+
+Use a scoped token granting only `read,todo:close`.
+First observation records only a baseline. Later runs scan fast-forward commits for
+`fix|close|resolve` variants followed by `#N` or `repo-slug#N`. Rewritten refs stop scanning;
+after operator inspection, `--rebaseline` accepts current tips without processing history.
+
 ## API workflow
 
 Typical agent flow:

@@ -110,7 +110,7 @@ class ClaimRequest(BaseModel):
 
 class CloseRequest(BaseModel):
     verification_output: str = Field(..., min_length=1)
-    closing_commit: str | None = Field(default=None, max_length=40)
+    closing_commit: str | None = Field(default=None, max_length=64)
 
 
 class CommentCreate(BaseModel):

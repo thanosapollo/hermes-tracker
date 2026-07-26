@@ -74,7 +74,7 @@ def test_tools_expose_complete_bounded_schemas() -> None:
     assert close["additionalProperties"] is False
     assert close["properties"]["closing_commit"] == {
         "type": ["string", "null"],
-        "maxLength": 40,
+        "maxLength": 64,
     }
 
     link = tools["tracker_link"]

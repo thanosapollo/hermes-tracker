@@ -97,7 +97,7 @@ _TOOL_SCHEMAS: dict[str, dict[str, dict[str, Any]]] = {
         "repo": {"type": "string", "minLength": 1},
         "number": _POSITIVE_INTEGER,
         "verification_output": {"type": "string", "minLength": 1},
-        "closing_commit": {"type": ["string", "null"], "maxLength": 40},
+        "closing_commit": {"type": ["string", "null"], "maxLength": 64},
     },
 }
 _REQUIRED_ARGUMENTS = {

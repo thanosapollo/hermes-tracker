@@ -141,7 +141,7 @@ TOOLS = [
                 "repo_slug": REPO,
                 "number": NUMBER,
                 "verification_output": BODY,
-                "closing_commit": {"type": ["string", "null"], "maxLength": 40},
+                "closing_commit": {"type": ["string", "null"], "maxLength": 64},
             },
             ["repo_slug", "number", "verification_output"],
         ),

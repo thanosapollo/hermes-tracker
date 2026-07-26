@@ -76,7 +76,7 @@ def test_parse_directives_accepts_case_insensitive_supported_keywords(keyword: s
 
 
 def test_parse_directives_supports_cross_repo_and_multiple_references() -> None:
-    assert parse_directives("Fixes #2, other.repo#3 and third-repo#4\nCloses #5") == [
+    assert parse_directives("Fixes #2, other.repo#3, and third-repo#4\nCloses #5") == [
         Directive(keyword="fixes", repo_slug=None, number=2, reference="#2"),
         Directive(keyword="fixes", repo_slug="other.repo", number=3, reference="other.repo#3"),
         Directive(keyword="fixes", repo_slug="third-repo", number=4, reference="third-repo#4"),
@@ -85,7 +85,13 @@ def test_parse_directives_supports_cross_repo_and_multiple_references() -> None:
 
 
 def test_parse_directives_keeps_vague_words_and_incidental_refs_inert() -> None:
-    assert parse_directives("Done #1. Complete #2. Addresses #3. Refs #4. Prefixes #5.") == []
+    assert (
+        parse_directives(
+            "Done #1. Complete #2. Addresses #3. Refs #4. Prefixes #5. "
+            "Fixes #6suffix. Resolves repo#7suffix."
+        )
+        == []
+    )
 
 
 class RecordingClient:
@@ -176,6 +182,14 @@ class StubResponse(BytesIO):
         self.close()
 
 
+class StubOpener:
+    def __init__(self, callback) -> None:
+        self.callback = callback
+
+    def open(self, request, timeout):
+        return self.callback(request, timeout)
+
+
 def _http_error(request, status: int, body: bytes) -> urllib.error.HTTPError:
     return urllib.error.HTTPError(request.full_url, status, "failure", {}, BytesIO(body))
 
@@ -191,8 +205,7 @@ def test_tracker_client_closes_with_stable_idempotency_and_public_safe_evidence(
             return StubResponse(200, b'{"status":"active"}')
         return StubResponse(200, b'{"status":"done"}')
 
-    monkeypatch.setattr("urllib.request.urlopen", urlopen)
-    client = TrackerClient("http://127.0.0.1:8003", "secret")
+    client = TrackerClient("http://127.0.0.1:8003", "secret", opener=StubOpener(urlopen))
 
     client.close_from_directive(
         "other-repo",
@@ -221,11 +234,8 @@ def test_tracker_client_treats_missing_and_done_todos_as_noops(
             raise _http_error(request, 404, b'{"detail":"missing"}')
         return StubResponse(200, b'{"status":"done"}')
 
-    monkeypatch.setattr("urllib.request.urlopen", urlopen)
-
-    TrackerClient("http://localhost:8003", "secret").close_from_directive(
-        "repo", 1, "b" * 40, "Canonical commit directive: closes #1."
-    )
+    client = TrackerClient("http://localhost:8003", "secret", opener=StubOpener(urlopen))
+    client.close_from_directive("repo", 1, "b" * 40, "Canonical commit directive: closes #1.")
 
     assert len(requests) == 1
 
@@ -239,14 +249,28 @@ def test_tracker_client_keeps_blocked_closure_retryable(monkeypatch: pytest.Monk
             raise _http_error(request, 409, b'{"detail":"blocked"}')
         return StubResponse(200, b'{"status":"active"}')
 
-    monkeypatch.setattr("urllib.request.urlopen", urlopen)
-
     with pytest.raises(ScanError, match="tracker-close-failed"):
-        TrackerClient("http://[::1]:8003", "secret").close_from_directive(
-            "repo", 1, "c" * 40, "Canonical commit directive: resolves #1."
-        )
+        client = TrackerClient("http://[::1]:8003", "secret", opener=StubOpener(urlopen))
+        client.close_from_directive("repo", 1, "c" * 40, "Canonical commit directive: resolves #1.")
 
     assert [request.method for request in requests] == ["GET", "POST", "GET"]
+
+
+def test_tracker_client_disables_environment_proxies(monkeypatch: pytest.MonkeyPatch) -> None:
+    handlers = []
+
+    def build_opener(*values):
+        handlers.extend(values)
+        return StubOpener(lambda request, timeout: StubResponse(404, b"{}"))
+
+    monkeypatch.setattr("urllib.request.build_opener", build_opener)
+
+    TrackerClient("http://127.0.0.1:8003", "secret")
+
+    proxy_handler = next(
+        handler for handler in handlers if isinstance(handler, urllib.request.ProxyHandler)
+    )
+    assert proxy_handler.proxies == {}
 
 
 def test_state_round_trips_atomically(tmp_path: Path) -> None:

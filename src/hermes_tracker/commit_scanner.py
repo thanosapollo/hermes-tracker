@@ -21,13 +21,16 @@ from typing import Protocol
 
 _SLUG_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _REF_PATTERN = re.compile(r"^refs/[A-Za-z0-9][A-Za-z0-9_./-]{0,499}$")
+_REFERENCE = r"(?:[A-Za-z0-9_.-]+)?#[1-9][0-9]*(?![A-Za-z0-9_.-])"
 _DIRECTIVE_PATTERN = re.compile(
     r"\b(?P<keyword>fix(?:es|ed)?|close(?:s|d)?|resolve(?:s|d)?)\s+"
-    r"(?P<references>(?:[A-Za-z0-9_.-]+)?#[1-9][0-9]*"
-    r"(?:(?:\s*,\s*|\s+and\s+)(?:[A-Za-z0-9_.-]+)?#[1-9][0-9]*)*)",
+    rf"(?P<references>{_REFERENCE}"
+    rf"(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+){_REFERENCE})*)",
     re.IGNORECASE,
 )
-_REFERENCE_PATTERN = re.compile(r"(?:(?P<repo>[A-Za-z0-9_.-]+))?#(?P<number>[1-9][0-9]*)")
+_REFERENCE_PATTERN = re.compile(
+    r"(?:(?P<repo>[A-Za-z0-9_.-]+))?#(?P<number>[1-9][0-9]*)(?![A-Za-z0-9_.-])"
+)
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
@@ -153,7 +156,13 @@ def scan_repository(
 class TrackerClient:
     """Small authenticated client restricted to a loopback Tracker API."""
 
-    def __init__(self, base_url: str, token: str, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        token: str,
+        timeout: float = 10.0,
+        opener: urllib.request.OpenerDirector | None = None,
+    ) -> None:
         try:
             parsed = urllib.parse.urlsplit(base_url)
             _ = parsed.port
@@ -171,6 +180,7 @@ class TrackerClient:
         self._base_url = base_url.rstrip("/")
         self._token = token
         self._timeout = timeout
+        self._opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def _request(
         self,
@@ -189,7 +199,7 @@ class TrackerClient:
             headers=headers,
         )
         try:
-            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+            with self._opener.open(request, timeout=self._timeout) as response:
                 return response.status, json.load(response)
         except urllib.error.HTTPError as exc:
             try:

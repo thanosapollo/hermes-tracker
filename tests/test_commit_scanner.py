@@ -39,7 +39,7 @@ def _commit(repository: Path, message: str) -> str:
     tracked = repository / "tracked.txt"
     tracked.write_text(tracked.read_text() + message + "\n" if tracked.exists() else message + "\n")
     _git(repository, "add", "tracked.txt")
-    _git(repository, "commit", "-m", message)
+    _git(repository, "commit", "--no-gpg-sign", "-m", message)
     return _git(repository, "rev-parse", "HEAD")
 
 

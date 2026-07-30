@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -136,6 +138,13 @@ class TestPublicFrontend:
         assert re.search(r'name="label"[^>]*value="bug"', filtered.text)
         assert re.search(r'name="assignee"[^>]*value="alice"', filtered.text)
 
+        multi = client.get("/r/proj?label=auth,bug&assignee=alice,bob&state=open")
+        assert multi.status_code == 200
+        assert "Open Auth" in multi.text
+        assert "Docs only" not in multi.text
+        assert re.search(r'name="label"[^>]*value="auth, bug"', multi.text)
+        assert re.search(r'name="assignee"[^>]*value="alice, bob"', multi.text)
+
         closed = client.get("/r/proj?state=closed")
         assert "Closed Auth" in closed.text
         assert "Open Auth" not in closed.text
@@ -200,6 +209,46 @@ class TestPublicFrontend:
         assert '<option value="global">' in other
         assert '<option value="carol">' in other
         assert '<option value="auth">' not in other
+
+    def test_filter_complete_token_prefix_preserves_separators(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1] / "src/hermes_tracker/web/static/filter-complete.js"
+        )
+        source = script.read_text(encoding="utf-8")
+        node = r"""
+const vm = require('vm');
+const source = process.argv[1];
+const sandbox = { globalThis: {} };
+vm.createContext(sandbox);
+vm.runInContext(source + '\nthis.filterComplete = globalThis.filterComplete;', sandbox);
+const api = sandbox.filterComplete;
+const options = ['auth', 'bug', 'docs'];
+function assertEqual(actual, expected, label) {
+  const left = JSON.stringify(actual);
+  const right = JSON.stringify(expected);
+  if (left !== right) {
+    console.error(label + ': expected ' + right + ' got ' + left);
+    process.exit(1);
+  }
+}
+assertEqual(api.currentTokenBounds('auth,b').prefix, 'auth,', 'no-space prefix');
+assertEqual(api.currentTokenBounds('auth, b').prefix, 'auth, ', 'spaced prefix');
+assertEqual(api.currentTokenBounds('auth,').prefix, 'auth,', 'trailing-comma prefix');
+assertEqual(api.currentTokenBounds('auth,bug,d').prefix, 'auth,bug,', 'third-token prefix');
+assertEqual(api.optionValues(options, 'auth,b'), ['auth,bug'], 'no-space options');
+assertEqual(api.optionValues(options, 'auth, b'), ['auth, bug'], 'spaced options');
+assertEqual(api.optionValues(options, 'auth,'), ['auth,bug', 'auth,docs'], 'all after comma');
+assertEqual(api.optionValues(options, 'auth,bug,d'), ['auth,bug,docs'], 'third token');
+console.log('ok');
+"""
+        result = subprocess.run(
+            ["node", "-e", node, source],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        assert result.returncode == 0, result.stderr or result.stdout
+        assert "ok" in result.stdout
 
     def test_todo_detail_shows_all_fields(self, client) -> None:
         _seed_full_scenario(client)

@@ -45,9 +45,9 @@ ASSET_VERSION = _static_asset_version()
 class CacheControlledStaticFiles(StaticFiles):
     """Serve packaged assets with a bounded public cache policy.
 
-    Browsers and CDNs may cache the stylesheet for up to one hour. The file
-    is versioned by deploy (not by URL), so a bounded cache is safe and keeps
-    the public read-only frontend cheap to serve.
+    Browsers and CDNs may cache assets for up to one hour. Templates append a
+    content hash query parameter when linking static files, so a bounded cache
+    stays cheap while still refreshing after asset changes.
     """
 
     async def get_response(self, path: str, scope: Scope) -> Response:

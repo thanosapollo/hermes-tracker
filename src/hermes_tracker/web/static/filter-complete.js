@@ -1,5 +1,5 @@
 /* Token-aware datalist progressive enhancement for comma-separated filters. */
-(function () {
+(function (root) {
   "use strict";
 
   function splitTokens(value) {
@@ -11,21 +11,45 @@
       .filter(Boolean);
   }
 
-  function currentToken(value) {
+  function currentTokenBounds(value) {
     var comma = value.lastIndexOf(",");
     if (comma === -1) {
-      return value.trim();
+      var start = 0;
+      while (start < value.length && value.charAt(start) === " ") {
+        start += 1;
+      }
+      return { prefix: "", token: value.slice(start) };
     }
-    return value.slice(comma + 1).trim();
+    var after = comma + 1;
+    while (after < value.length && value.charAt(after) === " ") {
+      after += 1;
+    }
+    return {
+      prefix: value.slice(0, after),
+      token: value.slice(after),
+    };
   }
 
-  function prefixBeforeToken(value) {
-    var comma = value.lastIndexOf(",");
-    if (comma === -1) {
-      return "";
-    }
-    var head = splitTokens(value.slice(0, comma));
-    return head.length ? head.join(", ") + ", " : "";
+  function optionValues(options, value) {
+    var bounds = currentTokenBounds(value);
+    var selected = {};
+    splitTokens(value).forEach(function (token) {
+      selected[token] = true;
+    });
+    var token = bounds.token;
+    var tokenLower = token.toLowerCase();
+    var prefix = bounds.prefix;
+    var result = [];
+    options.forEach(function (option) {
+      if (selected[option] && option !== token) {
+        return;
+      }
+      if (token && option.toLowerCase().indexOf(tokenLower) === -1) {
+        return;
+      }
+      result.push(prefix + option);
+    });
+    return result;
   }
 
   function bindInput(input) {
@@ -45,26 +69,13 @@
     }
 
     function refresh() {
-      var value = input.value;
-      var selected = {};
-      splitTokens(value).forEach(function (token) {
-        selected[token] = true;
-      });
-      var token = currentToken(value);
-      var tokenLower = token.toLowerCase();
-      var prefix = prefixBeforeToken(value);
+      var values = optionValues(options, input.value);
       while (datalist.firstChild) {
         datalist.removeChild(datalist.firstChild);
       }
-      options.forEach(function (option) {
-        if (selected[option] && option !== token) {
-          return;
-        }
-        if (token && option.toLowerCase().indexOf(tokenLower) === -1) {
-          return;
-        }
+      values.forEach(function (value) {
         var node = document.createElement("option");
-        node.value = prefix + option;
+        node.value = value;
         datalist.appendChild(node);
       });
     }
@@ -73,5 +84,19 @@
     input.addEventListener("focus", refresh);
   }
 
-  document.querySelectorAll("input[data-token-complete]").forEach(bindInput);
-})();
+  function enhance(rootNode) {
+    var scope = rootNode || document;
+    scope.querySelectorAll("input[data-token-complete]").forEach(bindInput);
+  }
+
+  if (typeof document !== "undefined") {
+    enhance(document);
+  }
+
+  root.filterComplete = {
+    splitTokens: splitTokens,
+    currentTokenBounds: currentTokenBounds,
+    optionValues: optionValues,
+    enhance: enhance,
+  };
+})(typeof globalThis !== "undefined" ? globalThis : this);

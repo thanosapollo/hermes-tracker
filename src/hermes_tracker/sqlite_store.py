@@ -326,10 +326,15 @@ def list_repo_labels(conn: sqlite3.Connection, repo_id: int) -> list[str]:
 
 
 def list_repo_assignees(conn: sqlite3.Connection, repo_id: int) -> list[str]:
-    """Return sorted distinct nonempty assignees used in the repository."""
+    """Return sorted distinct nonempty assignees used in the repository.
+
+    Assignees that contain commas are omitted: public filters still split on
+    commas, so suggesting them would produce false empty results.
+    """
     rows = conn.execute(
         """SELECT DISTINCT assignee FROM todos
            WHERE repo_id = ? AND assignee IS NOT NULL AND TRIM(assignee) != ''
+             AND instr(assignee, ',') = 0
            ORDER BY assignee COLLATE NOCASE, assignee""",
         (repo_id,),
     ).fetchall()

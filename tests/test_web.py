@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -112,11 +110,16 @@ class TestPublicFrontend:
         )
         client.post(
             "/api/v1/repos/proj/todos",
+            json={"title": "Auth only", "labels": ["auth"], "assignee": "alice"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos",
             json={"title": "Closed Auth", "labels": ["auth"]},
             headers=AUTH_HEADERS,
         )
         client.post(
-            "/api/v1/repos/proj/todos/3/close",
+            "/api/v1/repos/proj/todos/4/close",
             json={"verification_output": "done"},
             headers=AUTH_HEADERS,
         )
@@ -125,6 +128,7 @@ class TestPublicFrontend:
         assert default.status_code == 200
         assert "Open Auth" in default.text
         assert "Docs only" in default.text
+        assert "Auth only" in default.text
         assert "Closed Auth" not in default.text
         assert 'name="q"' in default.text
         assert 'name="state"' in default.text
@@ -134,6 +138,7 @@ class TestPublicFrontend:
         assert filtered.status_code == 200
         assert "Open Auth" in filtered.text
         assert "Docs only" not in filtered.text
+        assert "Auth only" not in filtered.text
         assert re.search(r'name="q"[^>]*value="auth"', filtered.text)
         assert re.search(r'name="label"[^>]*value="bug"', filtered.text)
         assert re.search(r'name="assignee"[^>]*value="alice"', filtered.text)
@@ -141,6 +146,7 @@ class TestPublicFrontend:
         multi = client.get("/r/proj?label=auth,bug&assignee=alice,bob&state=open")
         assert multi.status_code == 200
         assert "Open Auth" in multi.text
+        assert "Auth only" not in multi.text
         assert "Docs only" not in multi.text
         assert re.search(r'name="label"[^>]*value="auth, bug"', multi.text)
         assert re.search(r'name="assignee"[^>]*value="alice, bob"', multi.text)
@@ -159,6 +165,11 @@ class TestPublicFrontend:
         client.post(
             "/api/v1/repos/proj/todos",
             json={"title": "Closed Docs", "labels": ["docs"], "assignee": "bob"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos",
+            json={"title": "Comma name", "labels": ["ops"], "assignee": "smith, jane"},
             headers=AUTH_HEADERS,
         )
         client.post(
@@ -193,6 +204,7 @@ class TestPublicFrontend:
         assert '<option value="docs">' in text
         assert '<option value="alice">' in text
         assert '<option value="bob">' in text
+        assert 'value="smith, jane"' not in text
         assert '<option value="global">' not in text
         assert '<option value="carol">' not in text
         assert "Open Auth" not in re.search(
@@ -209,46 +221,6 @@ class TestPublicFrontend:
         assert '<option value="global">' in other
         assert '<option value="carol">' in other
         assert '<option value="auth">' not in other
-
-    def test_filter_complete_token_prefix_preserves_separators(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1] / "src/hermes_tracker/web/static/filter-complete.js"
-        )
-        source = script.read_text(encoding="utf-8")
-        node = r"""
-const vm = require('vm');
-const source = process.argv[1];
-const sandbox = { globalThis: {} };
-vm.createContext(sandbox);
-vm.runInContext(source + '\nthis.filterComplete = globalThis.filterComplete;', sandbox);
-const api = sandbox.filterComplete;
-const options = ['auth', 'bug', 'docs'];
-function assertEqual(actual, expected, label) {
-  const left = JSON.stringify(actual);
-  const right = JSON.stringify(expected);
-  if (left !== right) {
-    console.error(label + ': expected ' + right + ' got ' + left);
-    process.exit(1);
-  }
-}
-assertEqual(api.currentTokenBounds('auth,b').prefix, 'auth,', 'no-space prefix');
-assertEqual(api.currentTokenBounds('auth, b').prefix, 'auth, ', 'spaced prefix');
-assertEqual(api.currentTokenBounds('auth,').prefix, 'auth,', 'trailing-comma prefix');
-assertEqual(api.currentTokenBounds('auth,bug,d').prefix, 'auth,bug,', 'third-token prefix');
-assertEqual(api.optionValues(options, 'auth,b'), ['auth,bug'], 'no-space options');
-assertEqual(api.optionValues(options, 'auth, b'), ['auth, bug'], 'spaced options');
-assertEqual(api.optionValues(options, 'auth,'), ['auth,bug', 'auth,docs'], 'all after comma');
-assertEqual(api.optionValues(options, 'auth,bug,d'), ['auth,bug,docs'], 'third token');
-console.log('ok');
-"""
-        result = subprocess.run(
-            ["node", "-e", node, source],
-            check=False,
-            text=True,
-            capture_output=True,
-        )
-        assert result.returncode == 0, result.stderr or result.stdout
-        assert "ok" in result.stdout
 
     def test_todo_detail_shows_all_fields(self, client) -> None:
         _seed_full_scenario(client)

@@ -177,14 +177,22 @@ class TestTodoPersistence:
         store.insert_todo(conn, repo["id"], title="No assignee", labels=["ux"], assignee=None)
         store.insert_todo(
             conn,
+            repo["id"],
+            title="Comma assignee",
+            labels=["ops"],
+            assignee="smith, jane",
+        )
+        store.insert_todo(
+            conn,
             other["id"],
             title="Elsewhere",
             labels=["global"],
             assignee="carol",
         )
 
-        assert store.list_repo_labels(conn, repo["id"]) == ["auth", "bug", "docs", "ux"]
+        assert store.list_repo_labels(conn, repo["id"]) == ["auth", "bug", "docs", "ops", "ux"]
         assert store.list_repo_assignees(conn, repo["id"]) == ["alice", "bob"]
+        assert "smith, jane" not in store.list_repo_assignees(conn, repo["id"])
         assert store.list_repo_labels(conn, other["id"]) == ["global"]
         assert store.list_repo_assignees(conn, other["id"]) == ["carol"]
         assert store.list_repo_labels(conn, 999_999) == []

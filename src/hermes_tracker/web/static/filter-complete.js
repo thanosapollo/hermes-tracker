@@ -48,19 +48,19 @@
       var value = input.value;
       var selected = {};
       splitTokens(value).forEach(function (token) {
-        selected[token.toLowerCase()] = true;
+        selected[token] = true;
       });
-      var token = currentToken(value).toLowerCase();
+      var token = currentToken(value);
+      var tokenLower = token.toLowerCase();
       var prefix = prefixBeforeToken(value);
       while (datalist.firstChild) {
         datalist.removeChild(datalist.firstChild);
       }
       options.forEach(function (option) {
-        var lower = option.toLowerCase();
-        if (selected[lower] && lower !== token) {
+        if (selected[option] && option !== token) {
           return;
         }
-        if (token && lower.indexOf(token) === -1) {
+        if (token && option.toLowerCase().indexOf(tokenLower) === -1) {
           return;
         }
         var node = document.createElement("option");

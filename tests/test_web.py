@@ -132,8 +132,9 @@ class TestPublicFrontend:
         assert filtered.status_code == 200
         assert "Open Auth" in filtered.text
         assert "Docs only" not in filtered.text
-        assert 'value="auth"' in filtered.text
-        assert 'value="alice"' in filtered.text
+        assert re.search(r'name="q"[^>]*value="auth"', filtered.text)
+        assert re.search(r'name="label"[^>]*value="bug"', filtered.text)
+        assert re.search(r'name="assignee"[^>]*value="alice"', filtered.text)
 
         closed = client.get("/r/proj?state=closed")
         assert "Closed Auth" in closed.text
@@ -188,7 +189,11 @@ class TestPublicFrontend:
         assert "Open Auth" not in re.search(
             r'id="label-suggestions">(.*?)</datalist>', text, re.S
         ).group(1)
-        assert "filter-complete.js" in text
+        assert "data-token-complete" in text
+        assert re.search(
+            r"filter-complete\.js\?v=[0-9a-f]{16}",
+            text,
+        )
         assert client.get("/static/filter-complete.js").status_code == 200
 
         other = client.get("/r/other").text

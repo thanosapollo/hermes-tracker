@@ -82,6 +82,7 @@ def _todo_row(row: sqlite3.Row) -> dict[str, Any]:
         "author": row["author"],
         "acceptance_criteria": _decode_list(row["acceptance_criteria"]),
         "verification_commands": _decode_list(row["verification_commands"]),
+        "labels": _decode_list(row["labels"]),
         "closing_commit": row["closing_commit"],
         "verification_output": row["verification_output"],
         "closed_by": row["closed_by"],
@@ -234,6 +235,7 @@ def insert_todo(
     assignee: str | None = None,
     acceptance_criteria: list[str] | None = None,
     verification_commands: list[str] | None = None,
+    labels: list[str] | None = None,
     author: str | None = None,
     *,
     commit: bool = True,
@@ -243,9 +245,9 @@ def insert_todo(
     conn.execute(
         """INSERT INTO todos
              (repo_id, number, title, description, status, priority, assignee,
-              acceptance_criteria, verification_commands,
+              acceptance_criteria, verification_commands, labels,
               closing_commit, verification_output, created_at, updated_at, author)
-           VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, NULL, NULL, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)""",
         (
             repo_id,
             number,
@@ -255,6 +257,7 @@ def insert_todo(
             assignee,
             _encode_list(acceptance_criteria or []),
             _encode_list(verification_commands or []),
+            _encode_list(labels or []),
             now,
             now,
             author,
@@ -281,19 +284,34 @@ def list_todos(
     conn: sqlite3.Connection,
     repo_id: int,
     status: str | None = None,
+    *,
+    statuses: list[str] | None = None,
+    q: str | None = None,
+    labels: list[str] | None = None,
+    assignees: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    if status:
-        rows = conn.execute(
-            """SELECT * FROM todos WHERE repo_id = ? AND status = ?
-               ORDER BY number""",
-            (repo_id, status),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM todos WHERE repo_id = ? ORDER BY number",
-            (repo_id,),
-        ).fetchall()
-    return [_todo_row(r) for r in rows]
+    clauses = ["repo_id = ?"]
+    params: list[Any] = [repo_id]
+    if status is not None:
+        clauses.append("status = ?")
+        params.append(status)
+    elif statuses is not None:
+        placeholders = ", ".join("?" for _ in statuses)
+        clauses.append(f"status IN ({placeholders})")
+        params.extend(statuses)
+    if q:
+        clauses.append("LOWER(title) LIKE ? ESCAPE '\\'")
+        escaped = q.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        params.append(f"%{escaped}%")
+    sql = f"SELECT * FROM todos WHERE {' AND '.join(clauses)} ORDER BY number"  # noqa: S608
+    rows = [_todo_row(r) for r in conn.execute(sql, params).fetchall()]
+    if labels:
+        required = set(labels)
+        rows = [todo for todo in rows if required.issubset(set(todo["labels"]))]
+    if assignees:
+        allowed = set(assignees)
+        rows = [todo for todo in rows if todo["assignee"] in allowed]
+    return rows
 
 
 def update_todo(
@@ -306,7 +324,7 @@ def update_todo(
     """Update mutable fields on a TODO.
 
     Only title, description, priority, assignee, acceptance_criteria,
-    verification_commands are accepted. Status, number, repo_id, closing
+    verification_commands, labels are accepted. Status, number, repo_id, closing
     fields are managed by dedicated transitions.
     """
     allowed = {
@@ -316,13 +334,14 @@ def update_todo(
         "assignee",
         "acceptance_criteria",
         "verification_commands",
+        "labels",
     }
     updates: list[str] = []
     values: list[Any] = []
     for key, value in fields.items():
         if key not in allowed:
             continue
-        if key in ("acceptance_criteria", "verification_commands"):
+        if key in ("acceptance_criteria", "verification_commands", "labels"):
             value = _encode_list(value or [])
         updates.append(f"{key} = ?")
         values.append(value)

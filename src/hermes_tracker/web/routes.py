@@ -4,13 +4,21 @@ from __future__ import annotations
 
 import sqlite3
 import urllib.parse
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .. import sqlite_store as store
+from ..domain import (
+    LabelError,
+    TodoListState,
+    statuses_for_list_state,
+    validate_filter_assignees,
+    validate_filter_labels,
+    validate_title_query,
+)
 from .markdown import render_markdown
 
 
@@ -105,6 +113,17 @@ def _status_color(status: str) -> str:
     }.get(status, "var(--status-other)")
 
 
+def _split_filter_values(raw: list[str] | None) -> list[str]:
+    """Expand repeated and comma-separated public filter values."""
+    values: list[str] = []
+    for item in raw or []:
+        for part in item.split(","):
+            part = part.strip()
+            if part:
+                values.append(part)
+    return values
+
+
 def create_web_router(
     get_conn: Any,
     templates: Jinja2Templates,
@@ -149,14 +168,35 @@ def create_web_router(
         )
 
     @router.get("/r/{slug}", response_class=HTMLResponse, name="repo_detail")
-    def repo_detail(request: Request, slug: str) -> Any:
+    def repo_detail(
+        request: Request,
+        slug: str,
+        state: TodoListState = TodoListState.OPEN,
+        q: Annotated[str | None, Query(max_length=200)] = None,
+        label: Annotated[list[str] | None, Query()] = None,
+        assignee: Annotated[list[str] | None, Query()] = None,
+    ) -> Any:
         conn = _conn()
         repo = _require_repo(conn, slug)
         if slug != repo["slug"]:
-            return RedirectResponse(
-                request.url_for("repo_detail", slug=repo["slug"]), status_code=308
-            )
-        todos = store.list_todos(conn, repo["id"])
+            target = str(request.url_for("repo_detail", slug=repo["slug"]))
+            if request.url.query:
+                target = f"{target}?{request.url.query}"
+            return RedirectResponse(target, status_code=308)
+        try:
+            title_query = validate_title_query(q)
+            labels = validate_filter_labels(_split_filter_values(label or []))
+            assignees = validate_filter_assignees(_split_filter_values(assignee or []))
+        except (LabelError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        todos = store.list_todos(
+            conn,
+            repo["id"],
+            statuses=statuses_for_list_state(state),
+            q=title_query,
+            labels=labels,
+            assignees=assignees,
+        )
         return templates.TemplateResponse(
             request,
             "repo_detail.html",
@@ -165,6 +205,12 @@ def create_web_router(
                 "todos": todos,
                 "navigation": _repository_navigation(request, repo, validated_base),
                 "has_todos": len(todos) > 0,
+                "filters": {
+                    "state": state.value,
+                    "q": title_query or "",
+                    "label": ", ".join(labels),
+                    "assignee": ", ".join(assignees),
+                },
             },
         )
 

@@ -338,6 +338,44 @@ pre code {
 
 .empty { color: var(--text-muted); font-style: italic; padding: 0.75rem 0; }
 
+.todo-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 0.85rem;
+  align-items: end;
+  margin: 0.75rem 0 1rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.todo-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+.todo-filters input,
+.todo-filters select {
+  min-width: 9rem;
+  background: var(--tertiary);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.3rem 0.45rem;
+  font: inherit;
+}
+.todo-filters button {
+  background: var(--tertiary);
+  color: var(--link);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+}
+.todo-filters button:hover { color: var(--link-hover); }
+
 /* ── responsive ───────────────────────────────────────────────────── */
 @media (max-width: 600px) {
   .content { padding: 12px; }

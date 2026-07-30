@@ -131,7 +131,7 @@ class TestTodoCreateGetList:
         _create_repo(client)
         _create_todo(client, title="T1")
         _create_todo(client, title="T2")
-        resp = client.get("/api/v1/repos/proj/todos", headers=AUTH_HEADERS)
+        resp = client.get("/api/v1/repos/proj/todos?state=all", headers=AUTH_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["todos"]) == 2
@@ -158,12 +158,130 @@ class TestTodoCreateGetList:
             "/api/v1/repos/proj/todos?status_filter=in+review", headers=AUTH_HEADERS
         )
         valid = client.get("/api/v1/repos/proj/todos?status_filter=open", headers=AUTH_HEADERS)
-        unfiltered = client.get("/api/v1/repos/proj/todos", headers=AUTH_HEADERS)
+        unfiltered = client.get("/api/v1/repos/proj/todos?state=all", headers=AUTH_HEADERS)
         assert invalid.status_code == 422
         assert valid.status_code == 200
         assert unfiltered.status_code == 200
         assert len(valid.json()["todos"]) == 1
         assert len(unfiltered.json()["todos"]) == 1
+
+    def test_list_todos_defaults_to_open_state(self, client) -> None:
+        _create_repo(client)
+        _create_todo(client, title="Open item")
+        client.post(
+            "/api/v1/repos/proj/todos/1/claim",
+            json={"assignee": "worker"},
+            headers=AUTH_HEADERS,
+        )
+        _create_todo(client, title="Still open")
+        done = _create_todo(client, title="Finished")
+        client.post(
+            f"/api/v1/repos/proj/todos/{done['number']}/close",
+            json={"verification_output": "ok"},
+            headers=AUTH_HEADERS,
+        )
+        default = client.get("/api/v1/repos/proj/todos", headers=AUTH_HEADERS)
+        assert default.status_code == 200
+        titles = {todo["title"] for todo in default.json()["todos"]}
+        assert titles == {"Open item", "Still open"}
+        closed = client.get("/api/v1/repos/proj/todos?state=closed", headers=AUTH_HEADERS)
+        assert {todo["title"] for todo in closed.json()["todos"]} == {"Finished"}
+        all_states = client.get("/api/v1/repos/proj/todos?state=all", headers=AUTH_HEADERS)
+        assert len(all_states.json()["todos"]) == 3
+
+    def test_list_todos_search_and_label_assignee_filters(self, client) -> None:
+        _create_repo(client)
+        _create_todo(
+            client,
+            title="Fix Auth Login",
+            labels=["bug", "auth"],
+            assignee="alice",
+        )
+        _create_todo(
+            client,
+            title="Docs pass",
+            labels=["docs"],
+            assignee="bob",
+        )
+        _create_todo(
+            client,
+            title="Auth hardening",
+            labels=["auth", "security"],
+            assignee="alice",
+        )
+        by_q = client.get("/api/v1/repos/proj/todos?q=auth", headers=AUTH_HEADERS)
+        assert {todo["title"] for todo in by_q.json()["todos"]} == {
+            "Fix Auth Login",
+            "Auth hardening",
+        }
+        by_labels = client.get(
+            "/api/v1/repos/proj/todos?label=auth&label=bug", headers=AUTH_HEADERS
+        )
+        assert [todo["title"] for todo in by_labels.json()["todos"]] == ["Fix Auth Login"]
+        by_assignees = client.get(
+            "/api/v1/repos/proj/todos?assignee=alice&assignee=carol",
+            headers=AUTH_HEADERS,
+        )
+        assert {todo["title"] for todo in by_assignees.json()["todos"]} == {
+            "Fix Auth Login",
+            "Auth hardening",
+        }
+        assert by_labels.json()["todos"][0]["labels"] == ["auth", "bug"]
+
+    def test_list_todos_rejects_invalid_filters(self, client) -> None:
+        _create_repo(client)
+        _create_todo(client, title="T1")
+        assert (
+            client.get("/api/v1/repos/proj/todos?state=maybe", headers=AUTH_HEADERS).status_code
+            == 422
+        )
+        assert (
+            client.get(
+                "/api/v1/repos/proj/todos?q=" + ("x" * 201), headers=AUTH_HEADERS
+            ).status_code
+            == 422
+        )
+        assert (
+            client.get("/api/v1/repos/proj/todos?label=Bad Label", headers=AUTH_HEADERS).status_code
+            == 422
+        )
+        assert (
+            client.get(
+                "/api/v1/repos/proj/todos?" + "&".join(f"label=l{i}" for i in range(17)),
+                headers=AUTH_HEADERS,
+            ).status_code
+            == 422
+        )
+
+    def test_create_get_and_list_include_labels(self, client) -> None:
+        _create_repo(client)
+        created = client.post(
+            "/api/v1/repos/proj/todos",
+            json={"title": "Labeled", "labels": ["Bug", " auth ", "bug"]},
+            headers=AUTH_HEADERS,
+        )
+        assert created.status_code == 201
+        assert created.json()["labels"] == ["auth", "bug"]
+        detail = client.get("/api/v1/repos/proj/todos/1", headers=AUTH_HEADERS)
+        assert detail.json()["labels"] == ["auth", "bug"]
+        listed = client.get("/api/v1/repos/proj/todos", headers=AUTH_HEADERS)
+        assert listed.json()["todos"][0]["labels"] == ["auth", "bug"]
+        updated = client.patch(
+            "/api/v1/repos/proj/todos/1",
+            json={"labels": ["docs"]},
+            headers=AUTH_HEADERS,
+        )
+        assert updated.status_code == 200
+        assert updated.json()["labels"] == ["docs"]
+
+    def test_create_rejects_invalid_labels(self, client) -> None:
+        _create_repo(client)
+        resp = client.post(
+            "/api/v1/repos/proj/todos",
+            json={"title": "Nope", "labels": ["not valid!"]},
+            headers=AUTH_HEADERS,
+        )
+        assert resp.status_code == 422
 
 
 class TestTodoUpdate:

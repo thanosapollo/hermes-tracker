@@ -8,7 +8,7 @@ import re
 import sqlite3
 from collections.abc import Callable
 from threading import Lock
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -20,12 +20,18 @@ from ..auth import principal_for_request
 from ..domain import (
     ClaimError,
     CloseError,
+    LabelError,
     LinkError,
     LinkType,
+    TodoListState,
     TodoStatus,
     claim_todo,
     close_todo,
+    statuses_for_list_state,
+    validate_filter_assignees,
+    validate_filter_labels,
     validate_link,
+    validate_title_query,
 )
 from ..models import (
     ClaimRequest,
@@ -273,6 +279,7 @@ def create_v1_router(get_conn: Any, check_auth: Any) -> APIRouter:
             author=todo["author"],
             acceptance_criteria=todo["acceptance_criteria"],
             verification_commands=todo["verification_commands"],
+            labels=todo.get("labels") or [],
             closing_commit=todo["closing_commit"],
             verification_output=todo["verification_output"],
             closed_by=todo["closed_by"],
@@ -330,6 +337,7 @@ def create_v1_router(get_conn: Any, check_auth: Any) -> APIRouter:
                 assignee=req.assignee,
                 acceptance_criteria=req.acceptance_criteria,
                 verification_commands=req.verification_commands,
+                labels=req.labels,
                 author=mutation_actor,
                 commit=False,
             )
@@ -353,12 +361,42 @@ def create_v1_router(get_conn: Any, check_auth: Any) -> APIRouter:
         )  # type: ignore[return-value]
 
     @router.get("/repos/{slug}/todos", response_model=RepoTodoListResponse)
-    def list_todos(slug: str, status_filter: TodoStatus | None = None) -> RepoTodoListResponse:
+    def list_todos(
+        slug: str,
+        state: TodoListState = TodoListState.OPEN,
+        status_filter: TodoStatus | None = None,
+        q: Annotated[str | None, Query(max_length=200)] = None,
+        label: Annotated[list[str] | None, Query()] = None,
+        assignee: Annotated[list[str] | None, Query()] = None,
+    ) -> RepoTodoListResponse:
         conn = _conn()
         repo = _require_repo(conn, slug)
-        todos = store.list_todos(
-            conn, repo["id"], status_filter.value if status_filter is not None else None
-        )
+        try:
+            title_query = validate_title_query(q)
+            labels = validate_filter_labels(label or [])
+            assignees = validate_filter_assignees(assignee or [])
+        except (LabelError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+            ) from exc
+        if status_filter is not None:
+            todos = store.list_todos(
+                conn,
+                repo["id"],
+                status=status_filter.value,
+                q=title_query,
+                labels=labels,
+                assignees=assignees,
+            )
+        else:
+            todos = store.list_todos(
+                conn,
+                repo["id"],
+                statuses=statuses_for_list_state(state),
+                q=title_query,
+                labels=labels,
+                assignees=assignees,
+            )
         return RepoTodoListResponse(
             repo=RepoResponse(**repo),
             todos=[
@@ -369,6 +407,7 @@ def create_v1_router(get_conn: Any, check_auth: Any) -> APIRouter:
                     priority=t["priority"],
                     assignee=t["assignee"],
                     author=t["author"],
+                    labels=t.get("labels") or [],
                     updated_at=t["updated_at"],
                 )
                 for t in todos

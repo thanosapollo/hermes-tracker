@@ -129,6 +129,7 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
         "ALTER TABLE repositories ADD COLUMN published INTEGER NOT NULL DEFAULT 1 "
         "CHECK (published IN (0, 1));",
     ),
+    (8, "ALTER TABLE todos ADD COLUMN labels TEXT NOT NULL DEFAULT '[]';"),
 )
 
 

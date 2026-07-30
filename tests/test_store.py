@@ -119,6 +119,42 @@ class TestTodoPersistence:
         assert len(open_todos) == 1
         assert len(done_todos) == 1
 
+    def test_labels_round_trip_and_filters(self, conn, repo) -> None:
+        from hermes_tracker.domain import TodoStatus
+
+        a = store.insert_todo(
+            conn,
+            repo["id"],
+            title="Auth Bug",
+            labels=["auth", "bug"],
+            assignee="alice",
+        )
+        store.insert_todo(
+            conn,
+            repo["id"],
+            title="Docs",
+            labels=["docs"],
+            assignee="bob",
+        )
+        done = store.insert_todo(conn, repo["id"], title="Old Auth", labels=["auth"])
+        store.set_todo_status(conn, done["id"], TodoStatus.DONE)
+
+        assert store.get_todo(conn, repo["id"], a["number"])["labels"] == ["auth", "bug"]
+        open_only = store.list_todos(conn, repo["id"], statuses=["open", "active"])
+        assert {todo["title"] for todo in open_only} == {"Auth Bug", "Docs"}
+        by_q = store.list_todos(conn, repo["id"], statuses=["open", "active"], q="auth")
+        assert [todo["title"] for todo in by_q] == ["Auth Bug"]
+        by_labels = store.list_todos(
+            conn, repo["id"], statuses=["open", "active"], labels=["auth", "bug"]
+        )
+        assert [todo["title"] for todo in by_labels] == ["Auth Bug"]
+        by_assignee = store.list_todos(
+            conn, repo["id"], statuses=["open", "active"], assignees=["alice", "carol"]
+        )
+        assert [todo["title"] for todo in by_assignee] == ["Auth Bug"]
+        store.update_todo(conn, a["id"], {"labels": ["docs"]})
+        assert store.get_todo_by_id(conn, a["id"])["labels"] == ["docs"]
+
 
 class TestForeignKeyCascade:
     def test_cascade_delete_repo_deletes_todos(self, conn, repo, todo) -> None:

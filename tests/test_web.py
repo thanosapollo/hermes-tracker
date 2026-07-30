@@ -92,6 +92,53 @@ class TestPublicFrontend:
         assert "Fix login bug" in resp.text
         assert "#1" in resp.text
 
+    def test_repo_detail_defaults_open_and_filters(self, client) -> None:
+        client.post("/api/v1/repos", json={"slug": "proj", "name": "Project"}, headers=AUTH_HEADERS)
+        client.post(
+            "/api/v1/repos/proj/todos",
+            json={
+                "title": "Open Auth",
+                "labels": ["auth", "bug"],
+                "assignee": "alice",
+            },
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos",
+            json={"title": "Docs only", "labels": ["docs"], "assignee": "bob"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos",
+            json={"title": "Closed Auth", "labels": ["auth"]},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos/3/close",
+            json={"verification_output": "done"},
+            headers=AUTH_HEADERS,
+        )
+
+        default = client.get("/r/proj")
+        assert default.status_code == 200
+        assert "Open Auth" in default.text
+        assert "Docs only" in default.text
+        assert "Closed Auth" not in default.text
+        assert 'name="q"' in default.text
+        assert 'name="state"' in default.text
+        assert 'value="open"' in default.text
+
+        filtered = client.get("/r/proj?q=auth&label=bug&assignee=alice&state=open")
+        assert filtered.status_code == 200
+        assert "Open Auth" in filtered.text
+        assert "Docs only" not in filtered.text
+        assert 'value="auth"' in filtered.text
+        assert 'value="alice"' in filtered.text
+
+        closed = client.get("/r/proj?state=closed")
+        assert "Closed Auth" in closed.text
+        assert "Open Auth" not in closed.text
+
     def test_todo_detail_shows_all_fields(self, client) -> None:
         _seed_full_scenario(client)
         resp = client.get("/r/proj/1")

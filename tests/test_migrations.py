@@ -96,6 +96,10 @@ def test_init_schema_upgrades_populated_legacy_database_idempotently() -> None:
     assert conn.execute("SELECT 1 FROM schema_migrations WHERE version = 4").fetchone() is not None
     assert conn.execute("SELECT 1 FROM schema_migrations WHERE version = 6").fetchone() is not None
     assert conn.execute("SELECT 1 FROM schema_migrations WHERE version = 7").fetchone() is not None
+    assert conn.execute("SELECT 1 FROM schema_migrations WHERE version = 8").fetchone() is not None
+    todo_columns = {row[1] for row in conn.execute("PRAGMA table_info(todos)")}
+    assert "labels" in todo_columns
+    assert legacy_todo["labels"] == []
     # An older binary can still locate the unchanged legacy repository row.
     assert (
         conn.execute("SELECT slug FROM repositories WHERE id = ?", (repo_id,)).fetchone()[0]

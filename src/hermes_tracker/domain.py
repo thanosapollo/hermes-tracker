@@ -6,6 +6,7 @@ in isolation. The store and API layers call into these helpers.
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import NamedTuple
 
@@ -17,6 +18,14 @@ class TodoStatus(str, Enum):
     ACTIVE = "active"
     BLOCKED = "blocked"
     DONE = "done"
+
+
+class TodoListState(str, Enum):
+    """Public list aggregation over internal TODO statuses."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+    ALL = "all"
 
 
 class LinkType(str, Enum):
@@ -49,6 +58,13 @@ INVERSE_LINKS: dict[LinkType, LinkType] = {
     LinkType.RELATED_TO: LinkType.RELATED_TO,
 }
 
+_LABEL_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,49}$")
+MAX_TODO_LABELS = 16
+MAX_TITLE_QUERY_LENGTH = 200
+MAX_FILTER_LABELS = 16
+MAX_FILTER_ASSIGNEES = 16
+MAX_ASSIGNEE_LENGTH = 200
+
 
 class LinkError(ValueError):
     """Raised when a link type or combination is invalid."""
@@ -60,6 +76,10 @@ class ClaimError(ValueError):
 
 class CloseError(ValueError):
     """Raised when a TODO cannot be closed."""
+
+
+class LabelError(ValueError):
+    """Raised when labels are invalid or oversized."""
 
 
 class LinkPair(NamedTuple):
@@ -160,3 +180,79 @@ def close_todo(
     # closing_commit is optional; no validation needed beyond type.
     _ = closing_commit
     return TodoStatus.DONE
+
+
+def normalize_labels(labels: list[str] | None) -> list[str]:
+    """Normalize TODO labels: strip, lowercase, unique, sorted, bounded."""
+    if not labels:
+        return []
+    if len(labels) > MAX_TODO_LABELS:
+        raise LabelError(f"at most {MAX_TODO_LABELS} labels allowed")
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in labels:
+        if not isinstance(raw, str):
+            raise LabelError("labels must be strings")
+        label = raw.strip().lower()
+        if not label:
+            raise LabelError("labels cannot be empty")
+        if not _LABEL_PATTERN.fullmatch(label):
+            raise LabelError("label must be 1-50 chars: start alphanumeric, then [a-z0-9._-]")
+        if label in seen:
+            continue
+        seen.add(label)
+        normalized.append(label)
+    if len(normalized) > MAX_TODO_LABELS:
+        raise LabelError(f"at most {MAX_TODO_LABELS} labels allowed")
+    return sorted(normalized)
+
+
+def statuses_for_list_state(state: TodoListState) -> list[str] | None:
+    """Map public list state to internal status values; None means every status."""
+    if state is TodoListState.OPEN:
+        return [TodoStatus.OPEN.value, TodoStatus.ACTIVE.value]
+    if state is TodoListState.CLOSED:
+        return [TodoStatus.DONE.value]
+    return None
+
+
+def validate_title_query(q: str | None) -> str | None:
+    """Return stripped title query or None; reject oversized values."""
+    if q is None:
+        return None
+    value = q.strip()
+    if not value:
+        return None
+    if len(value) > MAX_TITLE_QUERY_LENGTH:
+        raise ValueError(f"q must be at most {MAX_TITLE_QUERY_LENGTH} characters")
+    return value
+
+
+def validate_filter_labels(labels: list[str] | None) -> list[str]:
+    """Normalize exact label filters with AND semantics and bounds."""
+    if not labels:
+        return []
+    if len(labels) > MAX_FILTER_LABELS:
+        raise LabelError(f"at most {MAX_FILTER_LABELS} label filters allowed")
+    return normalize_labels(labels)
+
+
+def validate_filter_assignees(assignees: list[str] | None) -> list[str]:
+    """Validate exact assignee filters with OR semantics and bounds."""
+    if not assignees:
+        return []
+    if len(assignees) > MAX_FILTER_ASSIGNEES:
+        raise ValueError(f"at most {MAX_FILTER_ASSIGNEES} assignee filters allowed")
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in assignees:
+        value = raw.strip()
+        if not value:
+            raise ValueError("assignee filter cannot be empty")
+        if len(value) > MAX_ASSIGNEE_LENGTH:
+            raise ValueError(f"assignee must be at most {MAX_ASSIGNEE_LENGTH} characters")
+        if value in seen:
+            continue
+        seen.add(value)
+        cleaned.append(value)
+    return cleaned

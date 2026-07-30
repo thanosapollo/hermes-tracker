@@ -7,6 +7,7 @@ import urllib.parse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .domain import MAX_TODO_LABELS, LabelError, normalize_labels
 from .public_content import validate_public_comment
 
 # --- Request models ---
@@ -93,6 +94,15 @@ class TodoCreate(BaseModel):
     assignee: str | None = None
     acceptance_criteria: list[str] = Field(default_factory=list)
     verification_commands: list[str] = Field(default_factory=list)
+    labels: list[str] = Field(default_factory=list, max_length=MAX_TODO_LABELS)
+
+    @field_validator("labels")
+    @classmethod
+    def validate_labels(cls, value: list[str]) -> list[str]:
+        try:
+            return normalize_labels(value)
+        except LabelError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class TodoUpdate(BaseModel):
@@ -102,6 +112,17 @@ class TodoUpdate(BaseModel):
     assignee: str | None = None
     acceptance_criteria: list[str] | None = None
     verification_commands: list[str] | None = None
+    labels: list[str] | None = Field(default=None, max_length=MAX_TODO_LABELS)
+
+    @field_validator("labels")
+    @classmethod
+    def validate_labels(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        try:
+            return normalize_labels(value)
+        except LabelError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class ClaimRequest(BaseModel):
@@ -213,6 +234,7 @@ class TodoResponse(BaseModel):
     author: str | None
     acceptance_criteria: list[str]
     verification_commands: list[str]
+    labels: list[str] = Field(default_factory=list)
     closing_commit: str | None
     verification_output: str | None
     closed_by: str | None
@@ -234,6 +256,7 @@ class TodoSummary(BaseModel):
     priority: int
     assignee: str | None
     author: str | None
+    labels: list[str] = Field(default_factory=list)
     updated_at: str
 
 

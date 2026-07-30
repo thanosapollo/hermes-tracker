@@ -16,6 +16,30 @@
 <div class="markdown repo-prose">{{ repo.description | markdown }}</div>
 {% endif %}
 
+<form class="todo-filters" method="get" action="{{ request.url_for('repo_detail', slug=repo.slug) }}">
+  <label>
+    <span>State</span>
+    <select name="state">
+      <option value="open"{% if filters.state == "open" %} selected{% endif %}>open</option>
+      <option value="closed"{% if filters.state == "closed" %} selected{% endif %}>closed</option>
+      <option value="all"{% if filters.state == "all" %} selected{% endif %}>all</option>
+    </select>
+  </label>
+  <label>
+    <span>Title</span>
+    <input type="search" name="q" value="{{ filters.q }}" maxlength="200" placeholder="substring">
+  </label>
+  <label>
+    <span>Labels</span>
+    <input type="text" name="label" value="{{ filters.label }}" placeholder="a, b (AND)">
+  </label>
+  <label>
+    <span>Assignee</span>
+    <input type="text" name="assignee" value="{{ filters.assignee }}" placeholder="a, b (OR)">
+  </label>
+  <button type="submit">Filter</button>
+</form>
+
 <h3>TODOs{% if has_todos %} <span class="muted">({{ todos | length }})</span>{% endif %}</h3>
 {% if todos %}
 <table class="list" aria-label="TODO list">
@@ -25,6 +49,7 @@
       <th>TITLE</th>
       <th>STATUS</th>
       <th>PRIORITY</th>
+      <th>LABELS</th>
       <th>ASSIGNEE</th>
     </tr>
   </thead>
@@ -35,12 +60,13 @@
       <td>{{ todo.title }}</td>
       <td><span class="status" style="--status-color: {{ todo.status | status_color }}">{{ todo.status }}</span></td>
       <td>{{ todo.priority }}</td>
+      <td>{% if todo.labels %}{{ todo.labels | join(", ") }}{% else %}—{% endif %}</td>
       <td>{{ todo.assignee or "—" }}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% else %}
-  <p class="empty">No TODOs in this repository.</p>
+  <p class="empty">No TODOs match these filters.</p>
 {% endif %}
 {% endblock %}

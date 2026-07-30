@@ -263,3 +263,15 @@ class TodoSummary(BaseModel):
 class RepoTodoListResponse(BaseModel):
     repo: RepoResponse
     todos: list[TodoSummary]
+
+
+class LabelCatalogEntry(BaseModel):
+    name: str
+    color: str
+
+
+class LabelCatalogResponse(BaseModel):
+    """Global read-only established-label palette for clients."""
+
+    labels: list[LabelCatalogEntry]
+    fallback_color: str

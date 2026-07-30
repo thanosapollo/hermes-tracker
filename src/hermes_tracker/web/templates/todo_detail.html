@@ -24,7 +24,7 @@
 <table class="info">
   <tr><th>Priority</th><td>{{ todo.priority }}</td></tr>
   <tr><th>Assignee</th><td>{{ todo.assignee or "—" }}</td></tr>
-  <tr><th>Labels</th><td>{% if todo.labels %}{{ todo.labels | join(", ") }}{% else %}—{% endif %}</td></tr>
+  <tr><th>Labels</th><td>{% if todo.labels %}<span class="label-badges">{% for label in todo.labels %}<span class="label-badge" style="--label-color: {{ label | label_color }}">{{ label }}</span>{% endfor %}</span>{% else %}—{% endif %}</td></tr>
   <tr><th>Author</th><td>{{ todo.author or "—" }}</td></tr>
   <tr><th>Created</th><td>{{ todo.created_at }}</td></tr>
   <tr><th>Updated</th><td>{{ todo.updated_at }}</td></tr>

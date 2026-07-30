@@ -11,7 +11,8 @@ Hermes Tracker records durable project outcomes without becoming a forge, PR sys
 ## Features
 
 - FastAPI JSON API under `/api/v1`
-- Server-rendered public repository and TODO pages
+- Global read-only established-label palette at `GET /api/v1/labels` (unknown labels use `#9a8e78`)
+- Server-rendered public repository and TODO pages with restrained label badges
 - SQLite persistence with additive migrations and foreign keys
 - TODO claims, priorities, acceptance criteria, verification evidence, and closing commits
 - Append-only comments and typed cross-TODO links

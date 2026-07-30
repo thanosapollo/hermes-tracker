@@ -66,7 +66,7 @@
       <td>{{ todo.title }}</td>
       <td><span class="status" style="--status-color: {{ todo.status | status_color }}">{{ todo.status }}</span></td>
       <td>{{ todo.priority }}</td>
-      <td>{% if todo.labels %}{{ todo.labels | join(", ") }}{% else %}—{% endif %}</td>
+      <td>{% if todo.labels %}<span class="label-badges">{% for label in todo.labels %}<span class="label-badge" style="--label-color: {{ label | label_color }}">{{ label }}</span>{% endfor %}</span>{% else %}—{% endif %}</td>
       <td>{{ todo.assignee or "—" }}</td>
     </tr>
   {% endfor %}

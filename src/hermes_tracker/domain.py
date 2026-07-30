@@ -65,6 +65,31 @@ MAX_FILTER_LABELS = 16
 MAX_FILTER_ASSIGNEES = 16
 MAX_ASSIGNEE_LENGTH = 200
 
+# Global read-only established-label palette (meaning/color only; storage stays string[]).
+UNKNOWN_LABEL_COLOR = "#9a8e78"
+ESTABLISHED_LABEL_COLORS: dict[str, str] = {
+    "bug": "#c76d52",
+    "regression": "#c76d52",
+    "breaking-change": "#c76d52",
+    "deployment": "#c76d52",
+    "feature": "#5b9bd5",
+    "api": "#5b9bd5",
+    "maintenance": "#8fa35b",
+    "storage": "#8fa35b",
+    "compatibility": "#8fa35b",
+    "docs": "#9b72cf",
+    "ui": "#9b72cf",
+    "ux": "#9b72cf",
+    "emacs": "#9b72cf",
+    "research": "#4fa89b",
+    "protocol": "#4fa89b",
+    "build": "#d48a20",
+    "packaging": "#d48a20",
+    "performance": "#d48a20",
+    "security": "#d45f5f",
+    "needs-repro": UNKNOWN_LABEL_COLOR,
+}
+
 
 class LinkError(ValueError):
     """Raised when a link type or combination is invalid."""
@@ -205,6 +230,18 @@ def normalize_labels(labels: list[str] | None) -> list[str]:
     if len(normalized) > MAX_TODO_LABELS:
         raise LabelError(f"at most {MAX_TODO_LABELS} labels allowed")
     return sorted(normalized)
+
+
+def label_color(name: str) -> str:
+    """Return established palette hex for *name*, else neutral fallback."""
+    return ESTABLISHED_LABEL_COLORS.get(name, UNKNOWN_LABEL_COLOR)
+
+
+def label_catalog() -> list[dict[str, str]]:
+    """Return sorted established label name/color pairs for API clients."""
+    return [
+        {"name": name, "color": color} for name, color in sorted(ESTABLISHED_LABEL_COLORS.items())
+    ]
 
 
 def statuses_for_list_state(state: TodoListState) -> list[str] | None:

@@ -245,6 +245,35 @@ table.info td {
 .todo-number { color: var(--text-muted); font-weight: 700; }
 .muted { color: var(--text-muted); }
 
+/* ── label badges (restrained, palette-driven) ────────────────────── */
+.label-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.3rem;
+  align-items: center;
+  max-width: 100%;
+}
+.label-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.1em 0.42em;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--label-color, var(--text-muted)) 48%, var(--border));
+  color: var(--label-color, var(--text-muted));
+  background: color-mix(in srgb, var(--label-color, var(--text-muted)) 12%, transparent);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.label-badge:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 /* ── headings ─────────────────────────────────────────────────────── */
 h1, h2, h3, h4, h5, h6 { line-height: 1.25; }
 h2 {

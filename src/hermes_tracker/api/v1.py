@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from .. import sqlite_store as store
 from ..auth import principal_for_request
 from ..domain import (
+    UNKNOWN_LABEL_COLOR,
     ClaimError,
     CloseError,
     LabelError,
@@ -27,6 +28,7 @@ from ..domain import (
     TodoStatus,
     claim_todo,
     close_todo,
+    label_catalog,
     statuses_for_list_state,
     validate_filter_assignees,
     validate_filter_labels,
@@ -41,6 +43,8 @@ from ..models import (
     ExternalReferenceCreate,
     ExternalReferenceResponse,
     KanbanBoardIdentityBackfill,
+    LabelCatalogEntry,
+    LabelCatalogResponse,
     LinkCreate,
     LinkResponse,
     RepoCreate,
@@ -844,5 +848,13 @@ def create_v1_router(get_conn: Any, check_auth: Any) -> APIRouter:
             ExternalReferenceResponse(**reference)
             for reference in store.list_external_references(conn, todo["id"])
         ]
+
+    @router.get("/labels", response_model=LabelCatalogResponse)
+    def get_label_catalog() -> LabelCatalogResponse:
+        """Return the global established-label palette and unknown-label fallback."""
+        return LabelCatalogResponse(
+            labels=[LabelCatalogEntry(**entry) for entry in label_catalog()],
+            fallback_color=UNKNOWN_LABEL_COLOR,
+        )
 
     return router

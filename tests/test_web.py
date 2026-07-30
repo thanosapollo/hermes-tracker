@@ -222,6 +222,40 @@ class TestPublicFrontend:
         assert '<option value="carol">' in other
         assert '<option value="auth">' not in other
 
+    def test_label_badges_use_palette_colors(self, client) -> None:
+        client.post("/api/v1/repos", json={"slug": "proj", "name": "Project"}, headers=AUTH_HEADERS)
+        client.post(
+            "/api/v1/repos/proj/todos",
+            json={"title": "Palette", "labels": ["bug", "auth", "docs"]},
+            headers=AUTH_HEADERS,
+        )
+        list_page = client.get("/r/proj")
+        detail = client.get("/r/proj/1")
+        assert list_page.status_code == 200
+        assert detail.status_code == 200
+        for text in (list_page.text, detail.text):
+            assert 'class="label-badge"' in text
+            assert 'class="label-badges"' in text
+            assert re.search(
+                r'class="label-badge" style="--label-color: #c76d52"[^>]*>bug<',
+                text,
+            )
+            assert re.search(
+                r'class="label-badge" style="--label-color: #9b72cf"[^>]*>docs<',
+                text,
+            )
+            assert re.search(
+                r'class="label-badge" style="--label-color: #9a8e78"[^>]*>auth<',
+                text,
+            )
+            # Never put the raw label token into the style property itself.
+            assert 'style="--label-color: bug"' not in text
+            assert 'style="--label-color: auth"' not in text
+        css = client.get("/static/tracker.css").text
+        assert ".label-badge" in css
+        assert "--label-color" in css
+        assert "color-mix" in css
+
     def test_todo_detail_shows_all_fields(self, client) -> None:
         _seed_full_scenario(client)
         resp = client.get("/r/proj/1")

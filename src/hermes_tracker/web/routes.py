@@ -14,6 +14,7 @@ from .. import sqlite_store as store
 from ..domain import (
     LabelError,
     TodoListState,
+    label_color,
     statuses_for_list_state,
     validate_filter_assignees,
     validate_filter_labels,
@@ -113,6 +114,11 @@ def _status_color(status: str) -> str:
     }.get(status, "var(--status-other)")
 
 
+def _label_color(label: str) -> str:
+    """Return palette hex for a label; never echoes untrusted style input."""
+    return label_color(label)
+
+
 def _split_filter_values(raw: list[str] | None) -> list[str]:
     """Expand repeated and comma-separated public filter values."""
     values: list[str] = []
@@ -141,6 +147,7 @@ def create_web_router(
     router = APIRouter()
 
     templates.env.filters["status_color"] = _status_color
+    templates.env.filters["label_color"] = _label_color
     templates.env.filters["markdown"] = render_markdown
 
     validated_base = _safe_cgit_base(cgit_base)

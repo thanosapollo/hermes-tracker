@@ -6,7 +6,9 @@ import pytest
 
 from hermes_tracker.domain import (
     BLOCKING_LINK_TYPES,
+    ESTABLISHED_LABEL_COLORS,
     INVERSE_LINKS,
+    UNKNOWN_LABEL_COLOR,
     ClaimError,
     CloseError,
     LinkError,
@@ -17,6 +19,8 @@ from hermes_tracker.domain import (
     can_close,
     claim_todo,
     close_todo,
+    label_catalog,
+    label_color,
     normalize_link_pair,
     validate_link,
 )
@@ -204,3 +208,48 @@ class TestClose:
         assert can_close(TodoStatus.OPEN, True, "ok") is False
         assert can_close(TodoStatus.OPEN, False, None) is False
         assert can_close(TodoStatus.DONE, False, "ok") is False
+
+
+class TestLabelPalette:
+    EXPECTED = {
+        "bug": "#c76d52",
+        "regression": "#c76d52",
+        "breaking-change": "#c76d52",
+        "deployment": "#c76d52",
+        "feature": "#5b9bd5",
+        "api": "#5b9bd5",
+        "maintenance": "#8fa35b",
+        "storage": "#8fa35b",
+        "compatibility": "#8fa35b",
+        "docs": "#9b72cf",
+        "ui": "#9b72cf",
+        "ux": "#9b72cf",
+        "emacs": "#9b72cf",
+        "research": "#4fa89b",
+        "protocol": "#4fa89b",
+        "build": "#d48a20",
+        "packaging": "#d48a20",
+        "performance": "#d48a20",
+        "security": "#d45f5f",
+        "needs-repro": "#9a8e78",
+    }
+
+    def test_unknown_fallback_color(self) -> None:
+        assert UNKNOWN_LABEL_COLOR == "#9a8e78"
+
+    def test_established_colors_exact(self) -> None:
+        assert ESTABLISHED_LABEL_COLORS == self.EXPECTED
+
+    def test_label_color_known_and_unknown(self) -> None:
+        assert label_color("bug") == "#c76d52"
+        assert label_color("security") == "#d45f5f"
+        assert label_color("needs-repro") == "#9a8e78"
+        assert label_color("auth") == UNKNOWN_LABEL_COLOR
+        assert label_color("totally-custom") == UNKNOWN_LABEL_COLOR
+
+    def test_label_catalog_sorted_pairs(self) -> None:
+        catalog = label_catalog()
+        assert [entry["name"] for entry in catalog] == sorted(self.EXPECTED)
+        assert catalog == [
+            {"name": name, "color": color} for name, color in sorted(self.EXPECTED.items())
+        ]

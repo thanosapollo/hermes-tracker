@@ -139,6 +139,63 @@ class TestPublicFrontend:
         assert "Closed Auth" in closed.text
         assert "Open Auth" not in closed.text
 
+    def test_repo_detail_filter_suggestions_and_title_copy(self, client) -> None:
+        client.post("/api/v1/repos", json={"slug": "proj", "name": "Project"}, headers=AUTH_HEADERS)
+        client.post(
+            "/api/v1/repos/proj/todos",
+            json={"title": "Open Auth", "labels": ["auth", "bug"], "assignee": "alice"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos",
+            json={"title": "Closed Docs", "labels": ["docs"], "assignee": "bob"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos/2/close",
+            json={"verification_output": "done"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos",
+            json={"slug": "other", "name": "Other"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/other/todos",
+            json={"title": "Elsewhere", "labels": ["global"], "assignee": "carol"},
+            headers=AUTH_HEADERS,
+        )
+
+        page = client.get("/r/proj")
+        assert page.status_code == 200
+        text = page.text
+        assert 'placeholder="Search titles…"' in text or 'placeholder="Search titles..."' in text
+        assert 'placeholder="substring"' not in text
+        assert re.search(r'name="q"[^>]*list=', text) is None
+        assert 'name="q"' in text
+        assert 'list="label-suggestions"' in text
+        assert 'list="assignee-suggestions"' in text
+        assert 'id="label-suggestions"' in text
+        assert 'id="assignee-suggestions"' in text
+        assert '<option value="auth">' in text
+        assert '<option value="bug">' in text
+        assert '<option value="docs">' in text
+        assert '<option value="alice">' in text
+        assert '<option value="bob">' in text
+        assert '<option value="global">' not in text
+        assert '<option value="carol">' not in text
+        assert "Open Auth" not in re.search(
+            r'id="label-suggestions">(.*?)</datalist>', text, re.S
+        ).group(1)
+        assert "filter-complete.js" in text
+        assert client.get("/static/filter-complete.js").status_code == 200
+
+        other = client.get("/r/other").text
+        assert '<option value="global">' in other
+        assert '<option value="carol">' in other
+        assert '<option value="auth">' not in other
+
     def test_todo_detail_shows_all_fields(self, client) -> None:
         _seed_full_scenario(client)
         resp = client.get("/r/proj/1")

@@ -69,6 +69,7 @@ def test_sdist_excludes_private_worktrees_and_keeps_release_assets(tmp_path: Pat
         f"{release_root}/src/hermes_tracker/db.py",
         f"{release_root}/src/hermes_tracker/web/templates/base.html",
         f"{release_root}/src/hermes_tracker/web/static/tracker.css",
+        f"{release_root}/src/hermes_tracker/web/static/filter-complete.js",
         f"{release_root}/docs/deployment.md",
     } <= set(members)
 

@@ -197,6 +197,8 @@ def create_web_router(
             labels=labels,
             assignees=assignees,
         )
+        label_suggestions = store.list_repo_labels(conn, repo["id"])
+        assignee_suggestions = store.list_repo_assignees(conn, repo["id"])
         return templates.TemplateResponse(
             request,
             "repo_detail.html",
@@ -205,6 +207,8 @@ def create_web_router(
                 "todos": todos,
                 "navigation": _repository_navigation(request, repo, validated_base),
                 "has_todos": len(todos) > 0,
+                "label_suggestions": label_suggestions,
+                "assignee_suggestions": assignee_suggestions,
                 "filters": {
                     "state": state.value,
                     "q": title_query or "",

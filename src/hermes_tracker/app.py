@@ -25,7 +25,21 @@ from .web.routes import create_web_router
 
 TEMPLATES_DIR = Path(__file__).parent / "web" / "templates"
 STATIC_DIR = Path(__file__).parent / "web" / "static"
-ASSET_VERSION = hashlib.sha256((STATIC_DIR / "tracker.css").read_bytes()).hexdigest()[:16]
+
+
+def _static_asset_version() -> str:
+    """Return a short content hash over packaged public static assets."""
+    digest = hashlib.sha256()
+    for path in sorted(STATIC_DIR.iterdir()):
+        if path.is_file():
+            digest.update(path.name.encode())
+            digest.update(b"\0")
+            digest.update(path.read_bytes())
+            digest.update(b"\0")
+    return digest.hexdigest()[:16]
+
+
+ASSET_VERSION = _static_asset_version()
 
 
 class CacheControlledStaticFiles(StaticFiles):

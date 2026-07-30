@@ -155,6 +155,41 @@ class TestTodoPersistence:
         store.update_todo(conn, a["id"], {"labels": ["docs"]})
         assert store.get_todo_by_id(conn, a["id"])["labels"] == ["docs"]
 
+    def test_repo_filter_vocabulary_is_distinct_and_repo_scoped(self, conn, repo) -> None:
+        from hermes_tracker.domain import TodoStatus
+
+        other = store.insert_repo(conn, slug="other", name="Other")
+        store.insert_todo(
+            conn,
+            repo["id"],
+            title="Open",
+            labels=["bug", "auth"],
+            assignee="alice",
+        )
+        closed = store.insert_todo(
+            conn,
+            repo["id"],
+            title="Closed",
+            labels=["docs", "auth"],
+            assignee="bob",
+        )
+        store.set_todo_status(conn, closed["id"], TodoStatus.DONE)
+        store.insert_todo(conn, repo["id"], title="No assignee", labels=["ux"], assignee=None)
+        store.insert_todo(
+            conn,
+            other["id"],
+            title="Elsewhere",
+            labels=["global"],
+            assignee="carol",
+        )
+
+        assert store.list_repo_labels(conn, repo["id"]) == ["auth", "bug", "docs", "ux"]
+        assert store.list_repo_assignees(conn, repo["id"]) == ["alice", "bob"]
+        assert store.list_repo_labels(conn, other["id"]) == ["global"]
+        assert store.list_repo_assignees(conn, other["id"]) == ["carol"]
+        assert store.list_repo_labels(conn, 999_999) == []
+        assert store.list_repo_assignees(conn, 999_999) == []
+
 
 class TestForeignKeyCascade:
     def test_cascade_delete_repo_deletes_todos(self, conn, repo, todo) -> None:

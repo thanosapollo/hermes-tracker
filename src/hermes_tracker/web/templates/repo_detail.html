@@ -27,17 +27,23 @@
   </label>
   <label>
     <span>Title</span>
-    <input type="search" name="q" value="{{ filters.q }}" maxlength="200" placeholder="substring">
+    <input type="search" name="q" value="{{ filters.q }}" maxlength="200" placeholder="Search titles…" autocomplete="off">
   </label>
   <label>
     <span>Labels</span>
-    <input type="text" name="label" value="{{ filters.label }}" placeholder="a, b (AND)">
+    <input type="text" name="label" value="{{ filters.label }}" placeholder="a, b (AND)" list="label-suggestions" data-token-complete autocomplete="off">
   </label>
   <label>
     <span>Assignee</span>
-    <input type="text" name="assignee" value="{{ filters.assignee }}" placeholder="a, b (OR)">
+    <input type="text" name="assignee" value="{{ filters.assignee }}" placeholder="a, b (OR)" list="assignee-suggestions" data-token-complete autocomplete="off">
   </label>
   <button type="submit">Filter</button>
+  <datalist id="label-suggestions">
+    {% for label in label_suggestions %}<option value="{{ label }}"></option>{% endfor %}
+  </datalist>
+  <datalist id="assignee-suggestions">
+    {% for assignee in assignee_suggestions %}<option value="{{ assignee }}"></option>{% endfor %}
+  </datalist>
 </form>
 
 <h3>TODOs{% if has_todos %} <span class="muted">({{ todos | length }})</span>{% endif %}</h3>
@@ -69,4 +75,5 @@
 {% else %}
   <p class="empty">No TODOs match these filters.</p>
 {% endif %}
+<script src="{{ request.url_for('static', path='filter-complete.js') }}?v={{ request.app.state.asset_version }}" defer></script>
 {% endblock %}

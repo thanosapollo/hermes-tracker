@@ -314,6 +314,28 @@ def list_todos(
     return rows
 
 
+def list_repo_labels(conn: sqlite3.Connection, repo_id: int) -> list[str]:
+    """Return sorted distinct labels used by any TODO in the repository."""
+    labels: set[str] = set()
+    for (raw,) in conn.execute(
+        "SELECT labels FROM todos WHERE repo_id = ?",
+        (repo_id,),
+    ):
+        labels.update(_decode_list(raw))
+    return sorted(labels)
+
+
+def list_repo_assignees(conn: sqlite3.Connection, repo_id: int) -> list[str]:
+    """Return sorted distinct nonempty assignees used in the repository."""
+    rows = conn.execute(
+        """SELECT DISTINCT assignee FROM todos
+           WHERE repo_id = ? AND assignee IS NOT NULL AND TRIM(assignee) != ''
+           ORDER BY assignee COLLATE NOCASE, assignee""",
+        (repo_id,),
+    ).fetchall()
+    return [str(row[0]) for row in rows]
+
+
 def update_todo(
     conn: sqlite3.Connection,
     todo_id: int,

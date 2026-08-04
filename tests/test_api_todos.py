@@ -397,15 +397,17 @@ class TestRelease:
         ]
         assert [event["event_type"] for event in events] == ["todo.claimed", "todo.released"]
 
-    def test_release_open_unassigned_todo_is_idempotent(self, client) -> None:
+    def test_release_open_unassigned_todo_is_idempotent(self, client, db_conn) -> None:
         _create_repo(client)
         _create_todo(client)
+        event_count = db_conn.execute("SELECT COUNT(*) FROM tracker_events").fetchone()[0]
 
         response = client.post("/api/v1/repos/proj/todos/1/release", json={}, headers=AUTH_HEADERS)
 
         assert response.status_code == 200
         assert response.json()["status"] == "open"
         assert response.json()["assignee"] is None
+        assert db_conn.execute("SELECT COUNT(*) FROM tracker_events").fetchone()[0] == event_count
 
     def test_release_open_assigned_todo_is_atomic(self, client, db_conn) -> None:
         _create_repo(client)

@@ -76,17 +76,36 @@ def test_release_requires_todo_update_scope_and_uses_authenticated_actor(client,
     assert forbidden.status_code == 403
 
     editor = _issue_agent(db_conn, actor="editor", scopes={"read", "todo:update"})
+    denied = client.post(
+        "/api/v1/repos/demo/todos/1/release",
+        json={},
+        headers={
+            "Authorization": f"Bearer {editor}",
+            "Idempotency-Key": "wrong-assignee",
+            "X-Actor": "worker",
+        },
+    )
+    assert denied.status_code == 409
+    assert (
+        db_conn.execute(
+            "SELECT COUNT(*) FROM tracker_events WHERE event_type = 'todo.released'"
+        ).fetchone()[0]
+        == 0
+    )
+    assert db_conn.execute("SELECT COUNT(*) FROM mutation_receipts").fetchone()[0] == 0
+
+    worker = _issue_agent(db_conn, actor="worker", scopes={"read", "todo:update"})
     allowed = client.post(
         "/api/v1/repos/demo/todos/1/release",
         json={},
-        headers={"Authorization": f"Bearer {editor}", "X-Actor": "forged"},
+        headers={"Authorization": f"Bearer {worker}", "X-Actor": "forged"},
     )
     assert allowed.status_code == 200
     event = db_conn.execute(
         "SELECT actor FROM tracker_events WHERE event_type = 'todo.released'"
     ).fetchone()
     assert event is not None
-    assert event["actor"] == "editor"
+    assert event["actor"] == "worker"
 
 
 def test_todo_author_is_server_derived_and_payload_cannot_spoof(client, db_conn) -> None:

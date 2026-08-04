@@ -163,14 +163,18 @@ def claim_todo(status: TodoStatus, assignee: str | None) -> tuple[TodoStatus, st
     return TodoStatus.ACTIVE, assignee.strip()
 
 
-def can_release(status: TodoStatus, assignee: str | None) -> bool:
+def can_release(status: TodoStatus, assignee: str | None, actor: str) -> bool:
     """Whether a TODO can return to passive open backlog."""
-    return status == TodoStatus.ACTIVE or (status == TodoStatus.OPEN and assignee is None)
+    if status == TodoStatus.OPEN:
+        return assignee is None
+    return status == TodoStatus.ACTIVE and assignee == actor
 
 
-def release_todo(status: TodoStatus, assignee: str | None) -> tuple[TodoStatus, None]:
+def release_todo(status: TodoStatus, assignee: str | None, actor: str) -> tuple[TodoStatus, None]:
     """Return an active or already-open TODO to unassigned open backlog."""
-    if not can_release(status, assignee):
+    if not can_release(status, assignee, actor):
+        if status == TodoStatus.ACTIVE and assignee != actor:
+            raise ReleaseError("Only the current assignee can release an active TODO")
         raise ReleaseError(f"Cannot release a TODO with status '{status.value}'")
     return TodoStatus.OPEN, None
 

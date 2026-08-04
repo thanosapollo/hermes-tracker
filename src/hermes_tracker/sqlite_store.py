@@ -407,6 +407,17 @@ def set_todo_assignee(
     return get_todo_by_id(conn, todo_id)
 
 
+def release_todo(
+    conn: sqlite3.Connection, todo_id: int, *, commit: bool = True
+) -> dict[str, Any] | None:
+    conn.execute(
+        "UPDATE todos SET status = 'open', assignee = NULL, updated_at = ? WHERE id = ?",
+        (utc_now(), todo_id),
+    )
+    _maybe_commit(conn, commit)
+    return get_todo_by_id(conn, todo_id)
+
+
 def close_todo(
     conn: sqlite3.Connection,
     todo_id: int,

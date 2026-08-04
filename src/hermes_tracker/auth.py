@@ -144,6 +144,8 @@ def _scope_for_request(request: Request) -> str:
         return "todo:link"
     if path.endswith("/claim"):
         return "todo:claim"
+    if path.endswith("/release"):
+        return "todo:update"
     if path.endswith("/close") or path.endswith("/supersede"):
         return "todo:close"
     if path.endswith("/comments"):

@@ -14,14 +14,17 @@ from hermes_tracker.domain import (
     LinkError,
     LinkPair,
     LinkType,
+    ReleaseError,
     TodoStatus,
     can_claim,
     can_close,
+    can_release,
     claim_todo,
     close_todo,
     label_catalog,
     label_color,
     normalize_link_pair,
+    release_todo,
     validate_link,
 )
 
@@ -144,6 +147,25 @@ class TestClaim:
         assert can_claim(TodoStatus.ACTIVE) is True
         assert can_claim(TodoStatus.BLOCKED) is False
         assert can_claim(TodoStatus.DONE) is False
+
+
+class TestRelease:
+    def test_release_active_todo(self) -> None:
+        assert release_todo(TodoStatus.ACTIVE) == (TodoStatus.OPEN, None)
+
+    def test_release_open_todo_is_idempotent(self) -> None:
+        assert release_todo(TodoStatus.OPEN) == (TodoStatus.OPEN, None)
+
+    @pytest.mark.parametrize("status", [TodoStatus.BLOCKED, TodoStatus.DONE])
+    def test_release_invalid_status_rejected(self, status: TodoStatus) -> None:
+        with pytest.raises(ReleaseError):
+            release_todo(status)
+
+    def test_can_release_truth_table(self) -> None:
+        assert can_release(TodoStatus.OPEN) is True
+        assert can_release(TodoStatus.ACTIVE) is True
+        assert can_release(TodoStatus.BLOCKED) is False
+        assert can_release(TodoStatus.DONE) is False
 
 
 class TestClose:

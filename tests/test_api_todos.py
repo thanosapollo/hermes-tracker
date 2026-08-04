@@ -1,8 +1,12 @@
-"""Tests for the /api/v1 TODO endpoints: create/list/get/update/claim/close."""
+"""Tests for the /api/v1 TODO endpoints: create/list/get/update/claim/release/close."""
 
 from __future__ import annotations
 
+import pytest
+
 from conftest import AUTH_HEADERS
+from hermes_tracker import sqlite_store as store
+from hermes_tracker.domain import TodoStatus
 
 
 def _create_repo(client, slug: str = "proj", name: str = "Project") -> dict:
@@ -339,6 +343,85 @@ class TestClaim:
         )
         assert resp.status_code == 200
         assert resp.json()["assignee"] == "worker-2"
+
+
+class TestRelease:
+    def test_release_preserves_todo_relations_history_and_replays_idempotently(
+        self, client
+    ) -> None:
+        _create_repo(client)
+        _create_todo(client, title="Keep me", description="Keep body", labels=["bug"])
+        _create_todo(client, title="Related")
+        client.post(
+            "/api/v1/repos/proj/todos/1/claim",
+            json={"assignee": "worker-1"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos/1/comments",
+            json={"author": "worker-1", "body": "Keep comment"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos/1/links",
+            json={"target_repo_slug": "proj", "target_number": 2, "link_type": "related-to"},
+            headers=AUTH_HEADERS,
+        )
+        client.post(
+            "/api/v1/repos/proj/todos/1/external-references",
+            json={"system": "hermes-kanban", "external_id": "t_1234abcd", "metadata": {}},
+            headers=AUTH_HEADERS,
+        )
+        before = client.get("/api/v1/repos/proj/todos/1", headers=AUTH_HEADERS).json()
+        headers = {**AUTH_HEADERS, "Idempotency-Key": "release-1", "X-Actor": "worker-1"}
+
+        first = client.post("/api/v1/repos/proj/todos/1/release", json={}, headers=headers)
+        replay = client.post("/api/v1/repos/proj/todos/1/release", json={}, headers=headers)
+
+        assert first.status_code == replay.status_code == 200
+        assert first.json() == replay.json()
+        released = first.json()
+        assert released["status"] == "open"
+        assert released["assignee"] is None
+        for field in (
+            "title",
+            "description",
+            "labels",
+            "comments",
+            "links",
+            "external_references",
+        ):
+            assert released[field] == before[field]
+        events = client.get("/api/v1/events?consumer=release-test", headers=AUTH_HEADERS).json()[
+            "events"
+        ]
+        assert [event["event_type"] for event in events] == ["todo.claimed", "todo.released"]
+
+    def test_release_open_unassigned_todo_is_idempotent(self, client) -> None:
+        _create_repo(client)
+        _create_todo(client)
+
+        response = client.post("/api/v1/repos/proj/todos/1/release", json={}, headers=AUTH_HEADERS)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "open"
+        assert response.json()["assignee"] is None
+
+    @pytest.mark.parametrize("invalid_status", ["blocked", "done"])
+    def test_release_invalid_status_is_atomic(self, client, db_conn, invalid_status: str) -> None:
+        _create_repo(client)
+        _create_todo(client)
+        repo = store.get_repo(db_conn, "proj")
+        assert repo is not None
+        todo = store.get_todo(db_conn, repo["id"], 1)
+        assert todo is not None
+        store.set_todo_status(db_conn, todo["id"], TodoStatus(invalid_status))
+        before = dict(store.get_todo_by_id(db_conn, todo["id"]) or {})
+
+        response = client.post("/api/v1/repos/proj/todos/1/release", json={}, headers=AUTH_HEADERS)
+
+        assert response.status_code == 409
+        assert dict(store.get_todo_by_id(db_conn, todo["id"]) or {}) == before
 
 
 class TestClose:

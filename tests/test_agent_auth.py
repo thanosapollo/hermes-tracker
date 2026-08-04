@@ -62,6 +62,33 @@ def test_todo_update_scope_cannot_change_repository_publication(client, db_conn)
     assert repo["published"] is True
 
 
+def test_release_requires_todo_update_scope_and_uses_authenticated_actor(client, db_conn) -> None:
+    master = {"Authorization": "Bearer test-secret-token"}
+    client.post("/api/v1/repos", json={"slug": "demo", "name": "Demo"}, headers=master)
+    client.post("/api/v1/repos/demo/todos", json={"title": "T"}, headers=master)
+    client.post("/api/v1/repos/demo/todos/1/claim", json={"assignee": "worker"}, headers=master)
+    reader = _issue_agent(db_conn, actor="reader", scopes={"read"})
+    forbidden = client.post(
+        "/api/v1/repos/demo/todos/1/release",
+        json={},
+        headers={"Authorization": f"Bearer {reader}"},
+    )
+    assert forbidden.status_code == 403
+
+    editor = _issue_agent(db_conn, actor="editor", scopes={"read", "todo:update"})
+    allowed = client.post(
+        "/api/v1/repos/demo/todos/1/release",
+        json={},
+        headers={"Authorization": f"Bearer {editor}", "X-Actor": "forged"},
+    )
+    assert allowed.status_code == 200
+    event = db_conn.execute(
+        "SELECT actor FROM tracker_events WHERE event_type = 'todo.released'"
+    ).fetchone()
+    assert event is not None
+    assert event["actor"] == "editor"
+
+
 def test_todo_author_is_server_derived_and_payload_cannot_spoof(client, db_conn) -> None:
     client.post(
         "/api/v1/repos",

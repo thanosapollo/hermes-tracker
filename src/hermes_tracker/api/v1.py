@@ -24,11 +24,13 @@ from ..domain import (
     LabelError,
     LinkError,
     LinkType,
+    ReleaseError,
     TodoListState,
     TodoStatus,
     claim_todo,
     close_todo,
     label_catalog,
+    release_todo,
     statuses_for_list_state,
     validate_filter_assignees,
     validate_filter_labels,
@@ -47,6 +49,7 @@ from ..models import (
     LabelCatalogResponse,
     LinkCreate,
     LinkResponse,
+    ReleaseRequest,
     RepoCreate,
     RepoResponse,
     RepoTodoListResponse,
@@ -475,6 +478,50 @@ def create_v1_router(get_conn: Any, check_auth: Any) -> APIRouter:
 
         return _mutate(
             _todo_operation("claim-todo", slug, number),
+            req,
+            response,
+            action,
+            200,
+            idempotency_key,
+            mutation_actor,
+        )  # type: ignore[return-value]
+
+    @router.post(
+        "/repos/{slug}/todos/{number}/release",
+        response_model=TodoResponse,
+        responses={200: {"headers": MUTATION_ID_HEADER}},
+    )
+    def release_todo_endpoint(
+        slug: str,
+        number: int,
+        req: ReleaseRequest,
+        response: Response,
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        actor: str | None = Header(default=None, alias="X-Actor"),
+    ) -> TodoResponse | JSONResponse:
+        mutation_actor = _mutation_actor(request, actor)
+
+        def action(conn: sqlite3.Connection) -> TodoResponse:
+            repo = _require_repo(conn, slug)
+            todo = _require_todo(conn, repo["id"], number)
+            try:
+                release_todo(TodoStatus(todo["status"]))
+            except ReleaseError as exc:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+            updated = store.release_todo(conn, todo["id"], commit=False)
+            store.insert_tracker_event(
+                conn,
+                event_type="todo.released",
+                todo_id=todo["id"],
+                actor=mutation_actor,
+                payload={"repo_slug": slug, "number": todo["number"]},
+                commit=False,
+            )
+            return _to_todo_response(conn, updated)  # type: ignore[arg-type]
+
+        return _mutate(
+            _todo_operation("release-todo", slug, number),
             req,
             response,
             action,

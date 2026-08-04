@@ -99,6 +99,10 @@ class ClaimError(ValueError):
     """Raised when a TODO cannot be claimed in its current state."""
 
 
+class ReleaseError(ValueError):
+    """Raised when a TODO cannot be released in its current state."""
+
+
 class CloseError(ValueError):
     """Raised when a TODO cannot be closed."""
 
@@ -157,6 +161,18 @@ def claim_todo(status: TodoStatus, assignee: str | None) -> tuple[TodoStatus, st
     if not assignee or not assignee.strip():
         raise ClaimError("Claim requires an assignee")
     return TodoStatus.ACTIVE, assignee.strip()
+
+
+def can_release(status: TodoStatus) -> bool:
+    """Whether a TODO can return to passive open backlog."""
+    return status in (TodoStatus.OPEN, TodoStatus.ACTIVE)
+
+
+def release_todo(status: TodoStatus) -> tuple[TodoStatus, None]:
+    """Return an active or already-open TODO to unassigned open backlog."""
+    if not can_release(status):
+        raise ReleaseError(f"Cannot release a TODO with status '{status.value}'")
+    return TodoStatus.OPEN, None
 
 
 def can_close(

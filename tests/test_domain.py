@@ -151,21 +151,26 @@ class TestClaim:
 
 class TestRelease:
     def test_release_active_todo(self) -> None:
-        assert release_todo(TodoStatus.ACTIVE) == (TodoStatus.OPEN, None)
+        assert release_todo(TodoStatus.ACTIVE, "worker") == (TodoStatus.OPEN, None)
 
     def test_release_open_todo_is_idempotent(self) -> None:
-        assert release_todo(TodoStatus.OPEN) == (TodoStatus.OPEN, None)
+        assert release_todo(TodoStatus.OPEN, None) == (TodoStatus.OPEN, None)
+
+    def test_release_open_assigned_todo_is_rejected(self) -> None:
+        with pytest.raises(ReleaseError):
+            release_todo(TodoStatus.OPEN, "worker")
 
     @pytest.mark.parametrize("status", [TodoStatus.BLOCKED, TodoStatus.DONE])
     def test_release_invalid_status_rejected(self, status: TodoStatus) -> None:
         with pytest.raises(ReleaseError):
-            release_todo(status)
+            release_todo(status, None)
 
     def test_can_release_truth_table(self) -> None:
-        assert can_release(TodoStatus.OPEN) is True
-        assert can_release(TodoStatus.ACTIVE) is True
-        assert can_release(TodoStatus.BLOCKED) is False
-        assert can_release(TodoStatus.DONE) is False
+        assert can_release(TodoStatus.OPEN, None) is True
+        assert can_release(TodoStatus.OPEN, "worker") is False
+        assert can_release(TodoStatus.ACTIVE, "worker") is True
+        assert can_release(TodoStatus.BLOCKED, None) is False
+        assert can_release(TodoStatus.DONE, None) is False
 
 
 class TestClose:

@@ -407,6 +407,30 @@ class TestRelease:
         assert response.json()["status"] == "open"
         assert response.json()["assignee"] is None
 
+    def test_release_open_assigned_todo_is_atomic(self, client, db_conn) -> None:
+        _create_repo(client)
+        _create_todo(client, assignee="worker-1")
+        repo = store.get_repo(db_conn, "proj")
+        assert repo is not None
+        todo = store.get_todo(db_conn, repo["id"], 1)
+        assert todo is not None
+        before = dict(store.get_todo_by_id(db_conn, todo["id"]) or {})
+        event_count = db_conn.execute("SELECT COUNT(*) FROM tracker_events").fetchone()[0]
+        receipt_count = db_conn.execute("SELECT COUNT(*) FROM mutation_receipts").fetchone()[0]
+
+        response = client.post(
+            "/api/v1/repos/proj/todos/1/release",
+            json={},
+            headers={**AUTH_HEADERS, "Idempotency-Key": "reject-open-assigned"},
+        )
+
+        assert response.status_code == 409
+        assert dict(store.get_todo_by_id(db_conn, todo["id"]) or {}) == before
+        assert db_conn.execute("SELECT COUNT(*) FROM tracker_events").fetchone()[0] == event_count
+        assert (
+            db_conn.execute("SELECT COUNT(*) FROM mutation_receipts").fetchone()[0] == receipt_count
+        )
+
     @pytest.mark.parametrize("invalid_status", ["blocked", "done"])
     def test_release_invalid_status_is_atomic(self, client, db_conn, invalid_status: str) -> None:
         _create_repo(client)

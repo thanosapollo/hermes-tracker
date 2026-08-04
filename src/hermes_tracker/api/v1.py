@@ -506,7 +506,7 @@ def create_v1_router(get_conn: Any, check_auth: Any) -> APIRouter:
             repo = _require_repo(conn, slug)
             todo = _require_todo(conn, repo["id"], number)
             try:
-                release_todo(TodoStatus(todo["status"]))
+                release_todo(TodoStatus(todo["status"]), todo["assignee"])
             except ReleaseError as exc:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
             updated = store.release_todo(conn, todo["id"], commit=False)

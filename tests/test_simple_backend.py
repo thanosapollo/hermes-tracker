@@ -218,6 +218,85 @@ def test_assignment_update_does_not_change_status_and_empty_update_fails(
     )
 
 
+def test_title_create_and_update_strip_padding(client: TestClient) -> None:
+    create_repo(client)
+    created = client.post(
+        "/api/v1/repos/source/todos",
+        headers=keyed("padded-create"),
+        json={"title": "  padded title  "},
+    )
+    assert created.status_code == 201
+    assert created.json()["title"] == "padded title"
+    blank_create = client.post(
+        "/api/v1/repos/source/todos",
+        headers=keyed("blank-create"),
+        json={"title": "   "},
+    )
+    assert blank_create.status_code == 422
+    updated = client.patch(
+        "/api/v1/repos/source/todos/1",
+        headers=keyed("padded-update"),
+        json={"title": "  next title  "},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "next title"
+    blank = client.patch(
+        "/api/v1/repos/source/todos/1",
+        headers=keyed("blank-title"),
+        json={"title": "   "},
+    )
+    assert blank.status_code == 422
+
+
+def test_closed_todos_reject_field_edits_but_allow_reopen_and_comments(
+    client: TestClient, connection_factory, settings: Settings
+) -> None:
+    create_repo(client)
+    create_todo(client)
+    hook = issue_token(connection_factory, "htk_git-hook-token", "git-hook", ["git:close"])
+    app = create_app(settings=settings, get_conn=connection_factory)
+    with TestClient(app) as scoped:
+        assert (
+            scoped.post(
+                "/api/v1/git-closures", headers=keyed("close-freeze", hook), json=closure_body()
+            ).json()["outcome"]
+            == "closed"
+        )
+        detail = scoped.get("/r/source/1")
+        head = scoped.head("/r/source/1")
+        assert head.status_code == 200
+        assert head.content == b""
+        assert head.headers["content-length"] == str(len(detail.content))
+
+    blocked = client.patch(
+        "/api/v1/repos/source/todos/1",
+        headers=keyed("closed-rewrite"),
+        json={"title": "rewritten"},
+    )
+    assert blocked.status_code == 409
+    assert issue(client)["title"] == "Issue"
+    mixed = client.patch(
+        "/api/v1/repos/source/todos/1",
+        headers=keyed("closed-mixed"),
+        json={"status": "open", "title": "reopened title"},
+    )
+    assert mixed.status_code == 409
+    comment = client.post(
+        "/api/v1/repos/source/todos/1/comments",
+        headers=keyed("closed-comment"),
+        json={"body": "post-close note"},
+    )
+    assert comment.status_code == 201
+    reopened = client.patch(
+        "/api/v1/repos/source/todos/1",
+        headers=keyed("closed-reopen"),
+        json={"status": "open"},
+    )
+    assert reopened.status_code == 200
+    assert reopened.json()["status"] == "open"
+    assert reopened.json()["closing_commit"] is None
+
+
 @pytest.mark.parametrize(
     ("method", "path", "scope"),
     [

@@ -157,7 +157,17 @@ class TodoUpdate(StrictModel):
     assignee: str | None = Field(default=None, max_length=200)
     labels: list[str] | None = Field(default=None, max_length=16)
 
-    @field_validator("title", "status", "priority", "labels")
+    @field_validator("title")
+    @classmethod
+    def nonblank_title(cls, value: str | None) -> str | None:
+        if value is None:
+            raise ValueError("field cannot be null")
+        value = value.strip()
+        if not value:
+            raise ValueError("title cannot be blank")
+        return value
+
+    @field_validator("status", "priority", "labels")
     @classmethod
     def reject_null(cls, value: Any) -> Any:
         if value is None:

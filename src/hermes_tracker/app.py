@@ -13,7 +13,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from starlette.types import Scope
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .api.v1 import create_v1_router
 from .auth import make_auth_dependency
@@ -42,6 +42,47 @@ class CacheControlledStaticFiles(StaticFiles):
         response = await super().get_response(path, scope)
         response.headers["Cache-Control"] = "public, max-age=3600"
         return response
+
+
+class HeadMethodMiddleware:
+    """Answer HEAD with GET status/headers and an empty body."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("method") != "HEAD":
+            await self.app(scope, receive, send)
+            return
+
+        scope = dict(scope)
+        scope["method"] = "GET"
+        start: Message | None = None
+        body_size = 0
+
+        async def capture(message: Message) -> None:
+            nonlocal start, body_size
+            if message["type"] == "http.response.start":
+                start = message
+                body_size = 0
+                return
+            if message["type"] == "http.response.body":
+                body_size += len(message.get("body", b""))
+                if message.get("more_body"):
+                    return
+                assert start is not None
+                headers = [
+                    (key, value)
+                    for key, value in start.get("headers", [])
+                    if key.lower() != b"content-length"
+                ]
+                headers.append((b"content-length", str(body_size).encode()))
+                await send({**start, "headers": headers})
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
+                return
+            await send(message)
+
+        await self.app(scope, receive, capture)
 
 
 def create_app(
@@ -80,6 +121,7 @@ def create_app(
     app.state.asset_version = ASSET_VERSION
     app.state.connection_factory = connection_factory
     app.mount("/static", CacheControlledStaticFiles(directory=STATIC_DIR), name="static")
+    app.add_middleware(HeadMethodMiddleware)
 
     auth = make_auth_dependency(settings, connection)
 

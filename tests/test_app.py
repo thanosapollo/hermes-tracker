@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from conftest import AUTH_HEADERS
 from hermes_tracker.app import create_app
 from hermes_tracker.config import Settings
 
@@ -13,6 +14,23 @@ def test_health_is_public_and_minimal(client) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_head_matches_get_status_and_content_length_without_body(client) -> None:
+    for path in ("/", "/health"):
+        get_response = client.get(path)
+        head_response = client.head(path)
+        assert head_response.status_code == get_response.status_code
+        assert head_response.content == b""
+        assert head_response.headers["content-length"] == str(len(get_response.content))
+        assert head_response.headers.get("content-type") == get_response.headers.get("content-type")
+
+    api_get = client.get("/api/v1/repos", headers=AUTH_HEADERS)
+    api_head = client.head("/api/v1/repos", headers=AUTH_HEADERS)
+    assert api_head.status_code == api_get.status_code == 200
+    assert api_head.content == b""
+    assert api_head.headers["content-length"] == str(len(api_get.content))
+    assert api_head.headers.get("content-type") == api_get.headers.get("content-type")
 
 
 def test_root_path_drives_private_docs_openapi_and_generated_links(

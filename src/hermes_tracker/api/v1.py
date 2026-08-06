@@ -294,9 +294,13 @@ def create_v1_router(connection: Any, check_auth: Any, cgit_base: str | None) ->
         def action() -> TodoResponse:
             repo = require_repo(conn, slug)
             todo = require_todo(conn, repo["id"], number)
-            updated = store.update_todo(
-                conn, todo["id"], req.model_dump(exclude_unset=True, mode="json"), commit=False
-            )
+            fields = req.model_dump(exclude_unset=True, mode="json")
+            if todo["status"] == "closed" and fields != {"status": "open"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Closed TODOs only accept reopen via status=open",
+                )
+            updated = store.update_todo(conn, todo["id"], fields, commit=False)
             return todo_response(conn, updated)  # type: ignore[arg-type]
 
         return mutate(

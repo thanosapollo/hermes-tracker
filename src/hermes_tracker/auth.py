@@ -75,7 +75,11 @@ def make_auth_dependency(settings: Settings, connection: Callable[..., Any]) -> 
         if credentials is None or credentials.scheme.lower() != "bearer":
             raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
         token = credentials.credentials
-        if settings.auth_token and hmac.compare_digest(token, settings.auth_token):
+        if (
+            settings.auth_token
+            and len(token) == len(settings.auth_token)
+            and hmac.compare_digest(token, settings.auth_token)
+        ):
             principal = Principal("master", CLIENT_SCOPES)
         else:
             scoped_principal = _find_principal(conn, token)

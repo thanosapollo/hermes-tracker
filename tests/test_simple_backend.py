@@ -259,6 +259,52 @@ def test_missing_or_empty_master_token_never_authenticates_arbitrary_bearer(
             )
 
 
+def test_unequal_length_bearer_falls_through_to_scoped_tokens(
+    connection_factory, settings: Settings
+) -> None:
+    short_master = "master-token"
+    hook = issue_token(connection_factory, "htk_git-hook-token-long", "git-hook", ["git:close"])
+    app = create_app(
+        settings=Settings(
+            db_path=settings.db_path,
+            auth_token=short_master,
+            cgit_base="https://git.example.org",
+        ),
+        get_conn=connection_factory,
+    )
+    with TestClient(app) as scoped:
+        create = scoped.post(
+            "/api/v1/repos",
+            headers={"Authorization": f"Bearer {short_master}", "Idempotency-Key": "repo"},
+            json={"slug": "source", "name": "Source"},
+        )
+        assert create.status_code == 201
+        todo = scoped.post(
+            "/api/v1/repos/source/todos",
+            headers={"Authorization": f"Bearer {short_master}", "Idempotency-Key": "todo"},
+            json={"title": "Close me"},
+        )
+        assert todo.status_code == 201
+        closed = scoped.post(
+            "/api/v1/git-closures",
+            headers={**hook, "Idempotency-Key": "close-1"},
+            json=closure_body(target_repo="source", source_repo="source"),
+        )
+        assert closed.status_code == 200
+        assert closed.json()["outcome"] == "closed"
+        assert (
+            scoped.post(
+                "/api/v1/git-closures",
+                headers={
+                    "Authorization": f"Bearer {short_master}",
+                    "Idempotency-Key": "close-master",
+                },
+                json=closure_body(target_repo="source", source_repo="source", commit_sha="b" * 40),
+            ).status_code
+            == 403
+        )
+
+
 def test_search_filters_two_state_views_and_removed_surfaces(
     client: TestClient, connection_factory, settings: Settings
 ) -> None:

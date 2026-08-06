@@ -138,6 +138,7 @@ def _source_rows(conn: sqlite3.Connection, disabled_at: str) -> list[dict[str, A
         {"kind": "alias", **dict(row)}
         for row in conn.execute("SELECT * FROM repository_aliases ORDER BY alias_slug")
     )
+    closures: list[dict[str, Any]] = []
     for row in conn.execute("SELECT * FROM todos ORDER BY repo_id,number"):
         if row["status"] not in {"open", "active", "blocked", "done"}:
             raise VerificationError("malformed todo status")
@@ -163,7 +164,7 @@ def _source_rows(conn: sqlite3.Connection, disabled_at: str) -> list[dict[str, A
         commit_sha = row["closing_commit"]
         closed_at = _valid_timestamp(row["closed_at"])
         if status == "closed" and FULL_OBJECT_ID.fullmatch(commit_sha or "") and closed_at:
-            result.append(
+            closures.append(
                 {
                     "kind": "closure",
                     "todo_id": row["id"],
@@ -174,6 +175,8 @@ def _source_rows(conn: sqlite3.Connection, disabled_at: str) -> list[dict[str, A
                     "closed_at": closed_at,
                 }
             )
+    closures.sort(key=lambda item: item["todo_id"])
+    result.extend(closures)
     result.extend(
         {"kind": "comment", **dict(row)}
         for row in conn.execute("SELECT * FROM comments ORDER BY id")

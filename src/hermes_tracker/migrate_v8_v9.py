@@ -176,6 +176,7 @@ def _project_source(conn: sqlite3.Connection, disabled_at: str) -> list[dict[str
         )
     for row in conn.execute("SELECT * FROM repository_aliases ORDER BY alias_slug"):
         rows.append({"kind": "alias", **dict(row)})
+    closures: list[dict[str, Any]] = []
     for row in conn.execute("SELECT * FROM todos ORDER BY repo_id,number"):
         if row["status"] not in {"open", "active", "blocked", "done"}:
             raise ConversionError("malformed todo status")
@@ -201,7 +202,7 @@ def _project_source(conn: sqlite3.Connection, disabled_at: str) -> list[dict[str
         commit_sha = row["closing_commit"]
         closed_at = _valid_timestamp(row["closed_at"])
         if status == "closed" and FULL_OBJECT_ID.fullmatch(commit_sha or "") and closed_at:
-            rows.append(
+            closures.append(
                 {
                     "kind": "closure",
                     "todo_id": row["id"],
@@ -212,6 +213,8 @@ def _project_source(conn: sqlite3.Connection, disabled_at: str) -> list[dict[str
                     "closed_at": closed_at,
                 }
             )
+    closures.sort(key=lambda item: item["todo_id"])
+    rows.extend(closures)
     for row in conn.execute("SELECT * FROM comments ORDER BY id"):
         rows.append({"kind": "comment", **dict(row)})
     for row in conn.execute("SELECT * FROM agent_tokens ORDER BY id"):

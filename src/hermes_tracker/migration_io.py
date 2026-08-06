@@ -23,6 +23,11 @@ class UnsafeMigrationPath(RuntimeError):
     pass
 
 
+def list_directory_fd(directory_fd: int) -> set[str]:
+    """Return directory entries via procfd so openat-dir streams stay reliable."""
+    return set(os.listdir(f"/proc/self/fd/{directory_fd}"))
+
+
 def sibling_names(source: Path, destination: Path, evidence: Path) -> tuple[Path, str, str, str]:
     """Return one lexical parent and leaf names without resolving symlinks."""
     absolute = tuple(Path(os.path.abspath(path)) for path in (source, destination, evidence))
@@ -172,7 +177,9 @@ def evidence_binding(
     exact_names: tuple[str, ...],
 ) -> dict[str, object]:
     """Bind exact evidence members to content and anchored filesystem identities."""
-    if set(os.listdir(evidence_fd)) != set(exact_names):
+    # List via procfd. Direct os.listdir(dir_fd) can return [] after openat writes
+    # on some kernels/Python builds while path-based listing is complete.
+    if list_directory_fd(evidence_fd) != set(exact_names):
         raise UnsafeMigrationPath("migration evidence set is not exact")
     evidence_info = os.fstat(evidence_fd)
     database_info = os.fstat(database_fd)

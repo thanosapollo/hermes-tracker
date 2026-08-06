@@ -24,6 +24,7 @@ from .migration_io import (
     directory_chain_matches,
     exists_at,
     hash_fd,
+    list_directory_fd,
     open_directory_chain,
     open_private_directory_at,
     open_regular_at,
@@ -372,7 +373,7 @@ def _published_layout_is_exact(
             == (os.fstat(bundled_database_fd).st_dev, os.fstat(bundled_database_fd).st_ino)
             and (os.fstat(published_evidence_fd).st_dev, os.fstat(published_evidence_fd).st_ino)
             == (expected_evidence.st_dev, expected_evidence.st_ino)
-            and set(os.listdir(published_evidence_fd)) == set(EVIDENCE_FILES)
+            and list_directory_fd(published_evidence_fd) == set(EVIDENCE_FILES)
         )
     except (OSError, UnsafeMigrationPath):
         return False
@@ -456,7 +457,7 @@ def convert_database(
             if destination_exists:
                 reject_sidecars(parent_fd, destination_name)
             evidence_fd = open_private_directory_at(parent_fd, evidence_name, uid, gid)
-            if set(os.listdir(evidence_fd)) != set(EVIDENCE_FILES):
+            if list_directory_fd(evidence_fd) != set(EVIDENCE_FILES):
                 raise ConversionError("incomplete migration publication exists")
             database_fd, destination_info = open_regular_at(evidence_fd, "database.db", uid, gid)
             if source_info.st_dev != destination_info.st_dev:

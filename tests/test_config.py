@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from hermes_tracker.config import DEFAULT_DB_PATH, Settings
+import pytest
+
+from hermes_tracker.config import DEFAULT_DB_PATH, Settings, normalize_cgit_base
 
 
 def test_defaults_use_hermes_tracker_names(monkeypatch) -> None:
@@ -57,3 +59,15 @@ def test_legacy_environment_variables_are_ignored(monkeypatch) -> None:
         root_path="",
         cgit_base="",
     )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("https://git.example.org", "https://git.example.org"),
+        ("https://GIT.EXAMPLE.ORG:8443/cgit/root/", "https://git.example.org:8443/cgit/root"),
+        ("https://[2001:db8::1]:8443/cgit", "https://[2001:db8::1]:8443/cgit"),
+    ],
+)
+def test_cgit_base_accepts_canonical_https_boundaries(value: str, expected: str) -> None:
+    assert normalize_cgit_base(value) == expected

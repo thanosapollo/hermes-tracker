@@ -1,7 +1,7 @@
 [project]
 name = "hermes-tracker"
 version = "0.1.0"
-description = "Deliberately small agent-only TODO tracker with a public read-only frontend."
+description = "Small issue tracker with authenticated mutations and public read-only pages."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -22,13 +22,13 @@ Repository = "https://git.thanosapollo.org/hermes-tracker"
 Issues = "https://todos.thanosapollo.org/r/hermes-tracker"
 
 [project.scripts]
-hermes-tracker-scan-commit-directives = "hermes_tracker.commit_scanner:main"
 hermes-tracker-sync-public-repos = "hermes_tracker.sync_repos:main"
 hermes-tracker-token = "hermes_tracker.token_cli:main"
-hermes-tracker-mcp = "hermes_tracker.mcp:main"
 
 [project.optional-dependencies]
 dev = [
+    "build>=1.2.0,<2.0.0",
+    "hatchling>=1.27.0,<2.0.0",
     "pytest>=8.0.0,<9.0.0",
     "httpx>=0.25.0,<0.29.0",
     "ruff>=0.6.0,<0.10.0",

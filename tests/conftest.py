@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,28 +18,46 @@ AUTH_HEADERS = {"Authorization": f"Bearer {TEST_TOKEN}"}
 
 
 @pytest.fixture
-def db_conn() -> Generator[sqlite3.Connection, None, None]:
-    """In-memory SQLite with schema initialized."""
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    init_schema(conn)
+def db_path(tmp_path: Path) -> Path:
+    return tmp_path / "tracker.db"
+
+
+@pytest.fixture
+def connection_factory(db_path: Path) -> Callable[[], sqlite3.Connection]:
+    def connect() -> sqlite3.Connection:
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+
+    with connect() as conn:
+        init_schema(conn)
+    return connect
+
+
+@pytest.fixture
+def db_conn(
+    connection_factory: Callable[[], sqlite3.Connection],
+) -> Generator[sqlite3.Connection, None, None]:
+    conn = connection_factory()
     yield conn
     conn.close()
 
 
 @pytest.fixture
-def settings() -> Settings:
-    return Settings(db_path=":memory:", auth_token=TEST_TOKEN)
+def settings(db_path: Path) -> Settings:
+    return Settings(
+        db_path=str(db_path),
+        auth_token=TEST_TOKEN,
+        cgit_base="https://git.example.org",
+    )
 
 
 @pytest.fixture
-def client(settings: Settings, db_conn: sqlite3.Connection) -> Generator[TestClient, None, None]:
-    """TestClient with a fresh in-memory DB and auth enabled."""
-
-    def get_conn() -> sqlite3.Connection:
-        return db_conn
-
-    application = create_app(settings=settings, get_conn=get_conn)
+def client(
+    settings: Settings, connection_factory: Callable[[], sqlite3.Connection]
+) -> Generator[TestClient, None, None]:
+    """TestClient with one SQLite connection per request."""
+    application = create_app(settings=settings, get_conn=connection_factory)
     with TestClient(application) as c:
         yield c

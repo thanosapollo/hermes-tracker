@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -42,7 +43,16 @@ def test_sdist_excludes_private_worktrees_and_keeps_release_assets(tmp_path: Pat
     output = tmp_path / "dist"
 
     subprocess.run(
-        ["uv", "build", "--sdist", "--out-dir", str(output), str(project)],
+        [
+            sys.executable,
+            "-m",
+            "build",
+            "--no-isolation",
+            "--sdist",
+            "--outdir",
+            str(output),
+            str(project),
+        ],
         check=True,
         text=True,
         capture_output=True,
@@ -65,7 +75,7 @@ def test_sdist_excludes_private_worktrees_and_keeps_release_assets(tmp_path: Pat
         f"{release_root}/CONTRIBUTING.md",
         f"{release_root}/SECURITY.md",
         f"{release_root}/src/hermes_tracker/app.py",
-        f"{release_root}/src/hermes_tracker/commit_scanner.py",
+        f"{release_root}/src/hermes_tracker/commit_directives.py",
         f"{release_root}/src/hermes_tracker/db.py",
         f"{release_root}/src/hermes_tracker/web/templates/base.html",
         f"{release_root}/src/hermes_tracker/web/static/tracker.css",
@@ -80,7 +90,8 @@ def test_deployment_document_uses_only_canonical_runtime_identity() -> None:
     assert "agentum" not in deployment.lower()
 
 
-def test_project_installs_commit_scanner_command() -> None:
+def test_project_excludes_removed_scanner_and_mcp_commands() -> None:
     project = (PROJECT_ROOT / "pyproject.toml").read_text()
 
-    assert 'hermes-tracker-scan-commit-directives = "hermes_tracker.commit_scanner:main"' in project
+    assert "commit_scanner" not in project
+    assert "hermes-tracker-mcp" not in project

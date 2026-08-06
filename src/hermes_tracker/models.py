@@ -1,36 +1,60 @@
-"""Pydantic request/response models for the API v1 schema."""
+"""Strict API request and response models."""
 
 from __future__ import annotations
 
 import re
 import urllib.parse
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .domain import MAX_TODO_LABELS, LabelError, normalize_labels
+from .domain import LabelError, TodoStatus, normalize_assignee, normalize_labels
 from .public_content import validate_public_comment
 
-# --- Request models ---
-
 _NAVIGATION_LABEL = re.compile(r"^[a-z][a-z0-9-]{0,49}$")
-_KANBAN_TASK_ID = re.compile(r"t_[0-9a-f]{8}")
+_REPO_SLUG = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
 
-class NavigationItem(BaseModel):
+def _valid_repo_slug(value: str) -> str:
+    if not _REPO_SLUG.fullmatch(value) or value in {".", ".."}:
+        raise ValueError("repository slug must be a stable cgit path segment")
+    return value
+
+
+def _valid_git_ref(value: str) -> str:
+    forbidden = " ~^:?*[\\"
+    parts = value.split("/")
+    if (
+        not value.startswith("refs/")
+        or len(parts) < 2
+        or any(not part or part.startswith(".") or part.endswith(".lock") for part in parts)
+        or value.endswith(".")
+        or ".." in value
+        or "@{" in value
+        or any(ord(char) < 32 or ord(char) == 127 or char in forbidden for char in value)
+    ):
+        raise ValueError("source_ref must be a valid full Git ref")
+    return value
+
+
+class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class NavigationItem(StrictModel):
     label: str
-    url: str = Field(..., min_length=1, max_length=2000)
+    url: str = Field(min_length=1, max_length=2000)
 
     @field_validator("label")
     @classmethod
-    def validate_label(cls, value: str) -> str:
+    def valid_label(cls, value: str) -> str:
         if not _NAVIGATION_LABEL.fullmatch(value):
             raise ValueError("label must be a lowercase navigation identifier")
         return value
 
     @field_validator("url")
     @classmethod
-    def validate_url(cls, value: str) -> str:
+    def valid_url(cls, value: str) -> str:
         if any(ord(character) < 32 for character in value):
             raise ValueError("URL cannot contain control characters")
         try:
@@ -53,9 +77,9 @@ class NavigationItem(BaseModel):
         return value
 
 
-class NavigationMixin(BaseModel):
+class NavigationMixin(StrictModel):
     @model_validator(mode="after")
-    def reject_duplicate_navigation_labels(self) -> NavigationMixin:
+    def unique_navigation(self) -> NavigationMixin:
         navigation = getattr(self, "navigation", None)
         if navigation is not None:
             labels = [item.label for item in navigation]
@@ -65,58 +89,89 @@ class NavigationMixin(BaseModel):
 
 
 class RepoCreate(NavigationMixin):
-    slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
-    name: str = Field(..., min_length=1, max_length=200)
-    description: str | None = None
+    slug: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=20_000)
     navigation: list[NavigationItem] = Field(default_factory=list, max_length=50)
+
+    @field_validator("slug")
+    @classmethod
+    def valid_slug(cls, value: str) -> str:
+        return _valid_repo_slug(value)
 
 
 class RepoUpdate(NavigationMixin):
-    model_config = ConfigDict(extra="forbid")
-
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=20_000)
     navigation: list[NavigationItem] | None = Field(default=None, max_length=50)
-    published: bool = True
+    published: bool | None = None
 
-    @field_validator("name")
+    @field_validator("name", "navigation", "published")
     @classmethod
-    def reject_null_name(cls, value: str | None) -> str:
+    def reject_null(cls, value: Any) -> Any:
         if value is None:
-            raise ValueError("name cannot be null")
+            raise ValueError("field cannot be null")
         return value
 
+    @model_validator(mode="after")
+    def require_field(self) -> RepoUpdate:
+        if not self.model_fields_set:
+            raise ValueError("at least one field must be provided")
+        return self
 
-class TodoCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=500)
-    description: str | None = None
+
+class TodoCreate(StrictModel):
+    title: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(default=None, max_length=20_000)
     priority: int = Field(default=0, ge=-1000, le=1000)
-    assignee: str | None = None
-    acceptance_criteria: list[str] = Field(default_factory=list)
-    verification_commands: list[str] = Field(default_factory=list)
-    labels: list[str] = Field(default_factory=list, max_length=MAX_TODO_LABELS)
+    assignee: str | None = Field(default=None, max_length=200)
+    labels: list[str] = Field(default_factory=list, max_length=16)
+
+    @field_validator("title")
+    @classmethod
+    def nonblank_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("title cannot be blank")
+        return value
+
+    @field_validator("assignee")
+    @classmethod
+    def valid_assignee(cls, value: str | None) -> str | None:
+        return normalize_assignee(value)
 
     @field_validator("labels")
     @classmethod
-    def validate_labels(cls, value: list[str]) -> list[str]:
+    def valid_labels(cls, value: list[str]) -> list[str]:
         try:
             return normalize_labels(value)
         except LabelError as exc:
             raise ValueError(str(exc)) from exc
 
 
-class TodoUpdate(BaseModel):
+class TodoUpdate(StrictModel):
     title: str | None = Field(default=None, min_length=1, max_length=500)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=20_000)
+    status: Literal["open"] | None = None
     priority: int | None = Field(default=None, ge=-1000, le=1000)
-    assignee: str | None = None
-    acceptance_criteria: list[str] | None = None
-    verification_commands: list[str] | None = None
-    labels: list[str] | None = Field(default=None, max_length=MAX_TODO_LABELS)
+    assignee: str | None = Field(default=None, max_length=200)
+    labels: list[str] | None = Field(default=None, max_length=16)
+
+    @field_validator("title", "status", "priority", "labels")
+    @classmethod
+    def reject_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("field cannot be null")
+        return value
+
+    @field_validator("assignee")
+    @classmethod
+    def valid_assignee(cls, value: str | None) -> str | None:
+        return normalize_assignee(value)
 
     @field_validator("labels")
     @classmethod
-    def validate_labels(cls, value: list[str] | None) -> list[str] | None:
+    def valid_labels(cls, value: list[str] | None) -> list[str] | None:
         if value is None:
             return None
         try:
@@ -124,158 +179,121 @@ class TodoUpdate(BaseModel):
         except LabelError as exc:
             raise ValueError(str(exc)) from exc
 
-
-class ClaimRequest(BaseModel):
-    assignee: str = Field(..., min_length=1, max_length=200)
-
-
-class ReleaseRequest(BaseModel):
-    pass
+    @model_validator(mode="after")
+    def require_field(self) -> TodoUpdate:
+        if not self.model_fields_set:
+            raise ValueError("at least one field must be provided")
+        return self
 
 
-class CloseRequest(BaseModel):
-    verification_output: str = Field(..., min_length=1)
-    closing_commit: str | None = Field(default=None, max_length=64)
+class GitClosureRequest(StrictModel):
+    source_repo: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
+    source_ref: str = Field(min_length=6, max_length=500)
+    commit_sha: str = Field(pattern=r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
+    target_repo: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
+    target_number: int = Field(ge=1)
+
+    @field_validator("commit_sha")
+    @classmethod
+    def lower_sha(cls, value: str) -> str:
+        return value.lower()
+
+    @field_validator("source_repo", "target_repo")
+    @classmethod
+    def valid_repo_slug(cls, value: str) -> str:
+        return _valid_repo_slug(value)
+
+    @field_validator("source_ref")
+    @classmethod
+    def valid_source_ref(cls, value: str) -> str:
+        return _valid_git_ref(value)
 
 
-class CommentCreate(BaseModel):
-    author: str = Field(..., min_length=1, max_length=200)
-    body: str = Field(..., min_length=1)
+class GitClosureResponse(StrictModel):
+    outcome: Literal["closed", "already_closed", "missing"]
+    target_repo: str
+    target_number: int
+
+
+class CommentCreate(StrictModel):
+    body: str = Field(min_length=1, max_length=20_000)
 
     @field_validator("body")
     @classmethod
-    def validate_body(cls, value: str) -> str:
+    def valid_body(cls, value: str) -> str:
         return validate_public_comment(value)
 
 
-class LinkCreate(BaseModel):
-    target_repo_slug: str
-    target_number: int = Field(..., ge=1)
-    link_type: str  # validated against domain.LinkType in the API layer
-
-
-class ExternalReferenceCreate(BaseModel):
-    system: str = Field(..., min_length=1, max_length=100)
-    external_id: str = Field(..., min_length=1, max_length=500)
-    url: str | None = Field(default=None, max_length=2000)
-    metadata: dict[str, str] = Field(default_factory=dict)
-
-
-class KanbanBoardIdentityBackfill(BaseModel):
-    board: str = Field(..., min_length=1, max_length=200)
-
-
-class SupersedeKanbanExecutionRequest(BaseModel):
-    rationale: str = Field(..., min_length=1)
-    replacement_kanban_id: str | None = None
-
-    @field_validator("rationale")
-    @classmethod
-    def validate_rationale(cls, value: str) -> str:
-        return validate_public_comment(value)
-
-    @field_validator("replacement_kanban_id")
-    @classmethod
-    def validate_replacement_kanban_id(cls, value: str | None) -> str | None:
-        if value is not None and not _KANBAN_TASK_ID.fullmatch(value):
-            raise ValueError("replacement_kanban_id must match t_<8 lowercase hex characters>")
-        return value
-
-
-# --- Response models ---
-
-
-class RepoResponse(BaseModel):
+class RepoResponse(StrictModel):
     id: int
     slug: str
     name: str
     description: str | None
-    navigation: list[NavigationItem] = Field(default_factory=list)
+    navigation: list[NavigationItem]
     published: bool
     created_at: str
 
 
-class CommentResponse(BaseModel):
+class RepoSummary(StrictModel):
+    status_counts: dict[str, int]
+    updated_at: str | None
+
+
+class RepoListItem(RepoResponse):
+    summary: RepoSummary
+
+
+class CommentResponse(StrictModel):
     id: int
     author: str
     body: str
     created_at: str
 
 
-class LinkResponse(BaseModel):
-    id: int
-    link_type: str
-    target_repo_slug: str
-    target_number: int
-    target_title: str
-
-
-class ExternalReferenceResponse(BaseModel):
-    id: int
-    system: str
-    external_id: str
-    url: str | None
-    metadata: dict[str, str]
-    created_at: str
-
-
-class SupersededKanbanExecutionResponse(BaseModel):
-    task_id: str
-    rationale: str
-    replacement_kanban_id: str | None
-    created_at: str
-
-
-class TodoResponse(BaseModel):
+class TodoResponse(StrictModel):
     id: int
     number: int
     repo_slug: str
     title: str
     description: str | None
-    status: str
+    status: TodoStatus
     priority: int
     assignee: str | None
     author: str | None
-    acceptance_criteria: list[str]
-    verification_commands: list[str]
-    labels: list[str] = Field(default_factory=list)
-    closing_commit: str | None
+    labels: list[str]
     verification_output: str | None
+    closing_commit: str | None
+    closing_source_repo: str | None
+    closing_source_ref: str | None
     closed_by: str | None
     closed_at: str | None
     created_at: str
     updated_at: str
     comments: list[CommentResponse]
-    links: list[LinkResponse]
-    external_references: list[ExternalReferenceResponse] = Field(default_factory=list)
-    superseded_kanban_executions: list[SupersededKanbanExecutionResponse] = Field(
-        default_factory=list
-    )
 
 
-class TodoSummary(BaseModel):
+class TodoSummary(StrictModel):
     number: int
     title: str
-    status: str
+    status: TodoStatus
     priority: int
     assignee: str | None
     author: str | None
-    labels: list[str] = Field(default_factory=list)
+    labels: list[str]
     updated_at: str
+    closed_at: str | None
 
 
-class RepoTodoListResponse(BaseModel):
+class RepoTodoListResponse(StrictModel):
     repo: RepoResponse
     todos: list[TodoSummary]
 
 
-class LabelCatalogEntry(BaseModel):
+class LabelCatalogEntry(StrictModel):
     name: str
     color: str
 
 
-class LabelCatalogResponse(BaseModel):
-    """Global read-only established-label palette for clients."""
-
+class LabelCatalogResponse(StrictModel):
     labels: list[LabelCatalogEntry]
     fallback_color: str

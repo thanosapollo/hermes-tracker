@@ -30,51 +30,9 @@
   <tr><th>Updated</th><td>{{ todo.updated_at }}</td></tr>
 </table>
 
-{% if todo.acceptance_criteria %}
-<h3>Acceptance Criteria</h3>
-<ul class="criteria-list">
-  {% for criterion in todo.acceptance_criteria %}
-  <li>☐ {{ criterion }}</li>
-  {% endfor %}
-</ul>
-{% endif %}
-
-{% if todo.verification_commands %}
-<h3>Verification Commands</h3>
-<ul class="commands-list">
-  {% for cmd in todo.verification_commands %}
-  <li><pre><code>{{ cmd }}</code></pre></li>
-  {% endfor %}
-</ul>
-{% endif %}
-
-{% if links %}
-<h3>Links</h3>
-{% for link in links %}
-<div class="link-item">
-  <span class="status" style="--status-color: var(--category)">{{ link.link_type }}</span>
-  → <a href="{{ request.url_for('todo_detail', slug=link.target_repo_slug, number=link.target_number) }}">#{{ link.target_number }} {{ link.target_title }}</a>
-  <span class="muted">({{ link.target_repo_slug }})</span>
-</div>
-{% endfor %}
-{% endif %}
-
-{% if reverse_links %}
-<h3>Referenced By</h3>
-{% for link in reverse_links %}
-<div class="link-item">
-  <span class="status" style="--status-color: var(--category)">{{ link.link_type }}</span>
-  ← <a href="{{ request.url_for('todo_detail', slug=link.source_repo_slug, number=link.source_number) }}">#{{ link.source_number }} {{ link.source_title }}</a>
-  <span class="muted">({{ link.source_repo_slug }})</span>
-</div>
-{% endfor %}
-{% endif %}
-
-{% if todo.closed_at %}
+{% if todo.closing_commit %}
 <div class="comment closure">
-  <div class="meta"><strong>{% if todo.closed_by %}{{ todo.closed_by }} closed this:{% else %}Closed:{% endif %}</strong></div>
-  <div class="markdown comment-body">{{ todo.verification_output | markdown(repo.slug, cgit_base) }}</div>
-  <div class="meta closure-meta">{{ todo.closed_at }}{% if todo.closing_commit %} · {% if commit_url %}<a href="{{ commit_url }}"><code>{{ todo.closing_commit }}</code></a>{% else %}<code>{{ todo.closing_commit }}</code>{% endif %}{% endif %}</div>
+  <a href="{{ commit_url }}">Closed in commit {{ todo.closing_commit[:7] }}.</a>
 </div>
 {% endif %}
 

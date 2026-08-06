@@ -26,6 +26,7 @@ python3Packages.buildPythonApplication {
   pythonRelaxDeps = [ "fastapi" "uvicorn" ];
 
   nativeCheckInputs = with python3Packages; [
+    build
     httpx
     pytestCheckHook
   ];
@@ -33,7 +34,7 @@ python3Packages.buildPythonApplication {
   pythonImportsCheck = [ "hermes_tracker" ];
 
   meta = {
-    description = "Small agent-only TODO tracker with a public read-only frontend";
+    description = "Small issue tracker with authenticated mutations and public read-only pages";
     homepage = "https://todos.thanosapollo.org";
     license = lib.licenses.mit;
     mainProgram = "uvicorn";

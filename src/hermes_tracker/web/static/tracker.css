@@ -38,9 +38,7 @@
   --accent-terracotta: #c76d52;
   /* semantic aliases keep status meaning consistent across sites */
   --status-open: var(--accent-aegean);
-  --status-active: var(--accent-teal);
-  --status-blocked: var(--accent-terracotta);
-  --status-done: var(--accent-olive);
+  --status-closed: var(--accent-olive);
   --status-other: var(--accent-purple);
   --category: var(--accent-purple);
   --metadata: var(--accent-aegean);
@@ -356,7 +354,7 @@ pre code {
   padding: 0.2rem 0 0.2rem 0.85rem;
   margin-bottom: 1rem;
 }
-.comment.closure { border-left-color: var(--status-done); }
+.comment.closure { border-left-color: var(--status-closed); }
 .closure-meta { margin-top: 0.35rem; }
 .comment .meta {
   color: var(--text-muted);

@@ -77,6 +77,9 @@ def test_sdist_excludes_private_worktrees_and_keeps_release_assets(tmp_path: Pat
         f"{release_root}/src/hermes_tracker/app.py",
         f"{release_root}/src/hermes_tracker/commit_directives.py",
         f"{release_root}/src/hermes_tracker/db.py",
+        f"{release_root}/src/hermes_tracker/migrate_v8_v9.py",
+        f"{release_root}/src/hermes_tracker/migration_io.py",
+        f"{release_root}/src/hermes_tracker/verify_v9_migration.py",
         f"{release_root}/src/hermes_tracker/web/templates/base.html",
         f"{release_root}/src/hermes_tracker/web/static/tracker.css",
         f"{release_root}/src/hermes_tracker/web/static/filter-complete.js",
@@ -95,3 +98,7 @@ def test_project_excludes_removed_scanner_and_mcp_commands() -> None:
 
     assert "commit_scanner" not in project
     assert "hermes-tracker-mcp" not in project
+    assert 'hermes-tracker-migrate-v8-v9 = "hermes_tracker.migrate_v8_v9:main"' in project
+    assert (
+        'hermes-tracker-verify-v9-migration = "hermes_tracker.verify_v9_migration:main"' in project
+    )

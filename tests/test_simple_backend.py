@@ -77,7 +77,7 @@ def test_runtime_rejects_same_version_database_with_wrong_reduced_schema() -> No
         db.init_schema(conn)
 
 
-def test_fresh_schema_has_no_repository_alias_compatibility_surface() -> None:
+def test_fresh_schema_keeps_only_alias_metadata_from_legacy_surface() -> None:
     conn = sqlite3.connect(":memory:")
     db.init_schema(conn)
 
@@ -95,6 +95,8 @@ def test_fresh_schema_has_no_repository_alias_compatibility_surface() -> None:
         "idx_todos_repo_status_number",
         "mutation_receipts",
         "repositories",
+        "repository_aliases",
+        "repository_aliases_one_canonical",
         "schema_migrations",
         "todo_closures",
         "todos",

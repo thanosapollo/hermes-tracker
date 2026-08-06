@@ -20,6 +20,14 @@ CREATE TABLE repositories (
     published INTEGER NOT NULL DEFAULT 1 CHECK(published IN (0,1)),
     created_at TEXT NOT NULL
 );
+CREATE TABLE repository_aliases (
+    alias_slug TEXT PRIMARY KEY,
+    repo_id INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    is_canonical INTEGER NOT NULL DEFAULT 0 CHECK(is_canonical IN (0,1)),
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX repository_aliases_one_canonical
+    ON repository_aliases(repo_id) WHERE is_canonical=1;
 CREATE TABLE todos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     repo_id INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
@@ -72,7 +80,8 @@ CREATE TABLE agent_tokens (
     scopes TEXT NOT NULL,
     created_at TEXT NOT NULL,
     expires_at TEXT,
-    disabled_at TEXT
+    disabled_at TEXT,
+    last_used_at TEXT
 );
 """
 
@@ -111,6 +120,24 @@ def connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def validate_schema(conn: sqlite3.Connection) -> None:
+    """Require exact v9 structure and intact SQLite contents."""
+    try:
+        versions = [row[0] for row in conn.execute("SELECT version FROM schema_migrations")]
+        valid = (
+            versions == [SCHEMA_VERSION]
+            and _schema_signature(conn) == EXPECTED_SCHEMA_SIGNATURE
+            and conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            and not conn.execute("PRAGMA foreign_key_check").fetchall()
+        )
+    except (sqlite3.DatabaseError, TypeError) as exc:
+        raise SchemaVersionError(
+            "database schema is unsupported; offline migration required"
+        ) from exc
+    if not valid:
+        raise SchemaVersionError("database schema is unsupported; offline migration required")
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     existing = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
@@ -123,11 +150,4 @@ def init_schema(conn: sqlite3.Connection) -> None:
         )
         conn.commit()
         return
-    try:
-        versions = [row[0] for row in conn.execute("SELECT version FROM schema_migrations")]
-    except (sqlite3.DatabaseError, TypeError) as exc:
-        raise SchemaVersionError(
-            "database schema is unsupported; offline migration required"
-        ) from exc
-    if versions != [SCHEMA_VERSION] or _schema_signature(conn) != EXPECTED_SCHEMA_SIGNATURE:
-        raise SchemaVersionError("database schema is unsupported; offline migration required")
+    validate_schema(conn)

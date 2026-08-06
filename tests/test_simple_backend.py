@@ -66,6 +66,26 @@ def closure_body(**overrides: object) -> dict[str, object]:
     return body
 
 
+def test_list_repos_includes_summary_open_count(client: TestClient, connection_factory) -> None:
+    create_repo(client)
+    create_todo(client, title="Open-one")
+    create_todo(client, title="Close-me")
+    with connection_factory() as conn:
+        conn.execute("UPDATE todos SET status='closed' WHERE number=2")
+        conn.commit()
+
+    response = client.get("/api/v1/repos", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    [repository] = response.json()
+    assert repository["summary"] == {
+        "status_counts": {"open": 1, "closed": 1},
+        "open_count": 1,
+        "updated_at": repository["summary"]["updated_at"],
+    }
+    assert repository["summary"]["updated_at"]
+
+
 def test_runtime_rejects_same_version_database_with_wrong_reduced_schema() -> None:
     conn = sqlite3.connect(":memory:")
     conn.executescript(

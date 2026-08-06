@@ -236,6 +236,7 @@ class RepoResponse(StrictModel):
 
 class RepoSummary(StrictModel):
     status_counts: dict[str, int]
+    open_count: int
     updated_at: str | None
 
 

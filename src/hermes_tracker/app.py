@@ -7,7 +7,8 @@ import sqlite3
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, Response
@@ -19,6 +20,7 @@ from .api.v1 import create_v1_router
 from .auth import make_auth_dependency
 from .config import Settings, normalize_cgit_base
 from .db import connect, init_schema
+from .security import SWAGGER_CSS, SWAGGER_JS, SecurityHeadersMiddleware, content_security_policy
 from .web.routes import create_web_router
 
 TEMPLATES_DIR = Path(__file__).parent / "web" / "templates"
@@ -85,6 +87,12 @@ class HeadMethodMiddleware:
         await self.app(scope, receive, capture)
 
 
+class TrackerApp(FastAPI):
+    def build_middleware_stack(self) -> ASGIApp:
+        # Ordinary user middleware sits inside ServerErrorMiddleware and misses 500s.
+        return SecurityHeadersMiddleware(HeadMethodMiddleware(super().build_middleware_stack()))
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -108,7 +116,7 @@ def create_app(
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.autoescape = True
-    app = FastAPI(
+    app = TrackerApp(
         title="Hermes Tracker",
         version="0.1.0",
         description="Small authenticated project issue ledger.",
@@ -121,7 +129,19 @@ def create_app(
     app.state.asset_version = ASSET_VERSION
     app.state.connection_factory = connection_factory
     app.mount("/static", CacheControlledStaticFiles(directory=STATIC_DIR), name="static")
-    app.add_middleware(HeadMethodMiddleware)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Pydantic includes submitted input and exception context by default. Neither
+        # belongs in a response when the rejected input may contain private material.
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": [
+                    {key: error[key] for key in ("type", "loc", "msg")} for error in exc.errors()
+                ]
+            },
+        )
 
     auth = make_auth_dependency(settings, connection)
 
@@ -139,10 +159,18 @@ def create_app(
 
     @app.get("/api/v1/docs", include_in_schema=False, dependencies=[Depends(auth)])
     def private_docs() -> Response:
-        return get_swagger_ui_html(
+        response = get_swagger_ui_html(
             openapi_url=f"{settings.root_path}/api/v1/openapi.json",
             title=f"{app.title} - Swagger UI",
+            swagger_js_url=SWAGGER_JS,
+            swagger_css_url=SWAGGER_CSS,
+            swagger_favicon_url=f"{settings.root_path}/static/chi-rho.svg",
+            swagger_ui_parameters={"validatorUrl": None},
         )
+        response.headers["Content-Security-Policy"] = content_security_policy(
+            bytes(response.body).decode()
+        )
+        return response
 
     app.include_router(create_v1_router(connection, auth, cgit_base))
 

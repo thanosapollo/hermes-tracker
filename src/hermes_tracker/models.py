@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import re
 import urllib.parse
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .domain import LabelError, TodoStatus, normalize_assignee, normalize_labels
-from .public_content import validate_public_comment
+from .public_content import validate_public_comment, validate_public_text
+
+# Request-only: existing records must remain readable without a content migration.
+PublicText = Annotated[str, AfterValidator(validate_public_text)]
 
 _NAVIGATION_LABEL = re.compile(r"^[a-z][a-z0-9-]{0,49}$")
 _REPO_SLUG = re.compile(r"^[a-zA-Z0-9_.-]+$")
@@ -18,7 +21,7 @@ _REPO_SLUG = re.compile(r"^[a-zA-Z0-9_.-]+$")
 def _valid_repo_slug(value: str) -> str:
     if not _REPO_SLUG.fullmatch(value) or value in {".", ".."}:
         raise ValueError("repository slug must be a stable cgit path segment")
-    return value
+    return validate_public_text(value)
 
 
 def _valid_git_ref(value: str) -> str:
@@ -78,6 +81,15 @@ class NavigationItem(StrictModel):
 
 
 class NavigationMixin(StrictModel):
+    @field_validator("navigation", check_fields=False)
+    @classmethod
+    def public_navigation(cls, value: list[NavigationItem] | None) -> list[NavigationItem] | None:
+        if value is not None:
+            for item in value:
+                validate_public_text(item.label)
+                validate_public_text(item.url)
+        return value
+
     @model_validator(mode="after")
     def unique_navigation(self) -> NavigationMixin:
         navigation = getattr(self, "navigation", None)
@@ -90,8 +102,8 @@ class NavigationMixin(StrictModel):
 
 class RepoCreate(NavigationMixin):
     slug: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
-    name: str = Field(min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=20_000)
+    name: PublicText = Field(min_length=1, max_length=200)
+    description: PublicText | None = Field(default=None, max_length=20_000)
     navigation: list[NavigationItem] = Field(default_factory=list, max_length=50)
 
     @field_validator("slug")
@@ -101,8 +113,8 @@ class RepoCreate(NavigationMixin):
 
 
 class RepoUpdate(NavigationMixin):
-    name: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=20_000)
+    name: PublicText | None = Field(default=None, min_length=1, max_length=200)
+    description: PublicText | None = Field(default=None, max_length=20_000)
     navigation: list[NavigationItem] | None = Field(default=None, max_length=50)
     published: bool | None = None
 
@@ -121,11 +133,11 @@ class RepoUpdate(NavigationMixin):
 
 
 class TodoCreate(StrictModel):
-    title: str = Field(min_length=1, max_length=500)
-    description: str | None = Field(default=None, max_length=20_000)
+    title: PublicText = Field(min_length=1, max_length=500)
+    description: PublicText | None = Field(default=None, max_length=20_000)
     priority: int = Field(default=0, ge=-1000, le=1000)
-    assignee: str | None = Field(default=None, max_length=200)
-    labels: list[str] = Field(default_factory=list, max_length=16)
+    assignee: PublicText | None = Field(default=None, max_length=200)
+    labels: list[PublicText] = Field(default_factory=list, max_length=16)
 
     @field_validator("title")
     @classmethod
@@ -150,12 +162,12 @@ class TodoCreate(StrictModel):
 
 
 class TodoUpdate(StrictModel):
-    title: str | None = Field(default=None, min_length=1, max_length=500)
-    description: str | None = Field(default=None, max_length=20_000)
+    title: PublicText | None = Field(default=None, min_length=1, max_length=500)
+    description: PublicText | None = Field(default=None, max_length=20_000)
     status: Literal["open"] | None = None
     priority: int | None = Field(default=None, ge=-1000, le=1000)
-    assignee: str | None = Field(default=None, max_length=200)
-    labels: list[str] | None = Field(default=None, max_length=16)
+    assignee: PublicText | None = Field(default=None, max_length=200)
+    labels: list[PublicText] | None = Field(default=None, max_length=16)
 
     @field_validator("title")
     @classmethod
@@ -198,7 +210,7 @@ class TodoUpdate(StrictModel):
 
 class GitClosureRequest(StrictModel):
     source_repo: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
-    source_ref: str = Field(min_length=6, max_length=500)
+    source_ref: PublicText = Field(min_length=6, max_length=500)
     commit_sha: str = Field(pattern=r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")
     target_repo: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
     target_number: int = Field(ge=1)

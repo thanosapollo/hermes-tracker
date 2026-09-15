@@ -35,11 +35,16 @@ _PROHIBITED_PATTERNS = (
 )
 
 
+def validate_public_text(value: str) -> str:
+    """Apply the public-content policy without changing field-specific empty rules."""
+    for category, pattern in _PROHIBITED_PATTERNS:
+        if pattern.search(value):
+            raise ValueError(f"Public tracker content contains prohibited {category} material")
+    return value
+
+
 def validate_public_comment(body: str) -> str:
-    """Return public-safe text or raise ``ValueError`` with a categorized reason."""
+    """Require a nonblank comment and apply the shared public-content policy."""
     if not body.strip():
         raise ValueError("Public tracker comment cannot be empty")
-    for category, pattern in _PROHIBITED_PATTERNS:
-        if pattern.search(body):
-            raise ValueError(f"Public tracker comment contains prohibited {category} material")
-    return body
+    return validate_public_text(body)

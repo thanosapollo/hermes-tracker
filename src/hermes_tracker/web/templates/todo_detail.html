@@ -39,8 +39,8 @@
 {% if comments %}
 <h3>Comments</h3>
 {% for comment in comments %}
-<div class="comment">
-  <div class="meta"><strong>{{ comment.author }}</strong> — {{ comment.created_at }}</div>
+<div class="comment" id="comment-{{ comment.id }}">
+  <div class="meta"><strong>{{ comment.author }}</strong> — <a href="#comment-{{ comment.id }}" aria-label="Permalink to comment {{ comment.id }}: {{ comment.created_at }}">{{ comment.created_at }}</a></div>
   <div class="markdown comment-body">{{ comment.body | markdown(repo.slug, cgit_base) }}</div>
 </div>
 {% endfor %}

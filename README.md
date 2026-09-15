@@ -14,6 +14,14 @@ Signed canonical commits use explicit `Fix|Close|Resolve` variants with `#N` or 
 
 Ordinary credentials have only `read`, `repo:manage`, `todo:create`, `todo:update`, and `comment:create`; they cannot assert Git authority.
 
+## References in descriptions and comments
+
+Use `commit:AbC1234` to link to the current repository's cgit commit view. The prefix is lowercase; hashes accept 7–64 hexadecimal characters (abbreviated or full SHA-1/SHA-256), preserving their exact spelling. Use standalone references separated from identifiers, paths, and Git revision suffixes; surrounding prose punctuation is allowed. Links do not verify object existence or type.
+
+`tree:HASH` stays literal: cgit's tree view requires commit context, not a raw tree object ID. A local candidate tree is not a published commit; use an authored Markdown URL with a published commit ID to link its tree view.
+
+Bare hashes and dates remain plain text. Markdown links keep their authored URLs; inline/fenced code and escaped references such as `\commit:AbC1234` stay literal. Links require a configured cgit base. Each comment's timestamp is a stable permalink.
+
 ## Run
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).

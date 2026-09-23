@@ -1,8 +1,14 @@
 # Hermes Tracker
 
-Small issue tracker for software projects. It provides repositories, numbered issues, comments, labels, priority, assignee, search, and `open|closed` state. Public pages are read-only; trusted clients mutate through `/api/v1`.
+Small issue tracker for software projects. It provides repositories, numbered issues, comments, labels, priority, assignee, search, and `open|closed` state. Public pages are read-only; agents mutate through the authenticated HTTP API or optional stdio MCP adapter.
 
 Tracker is not a forge, Kanban board, CI service, deployment controller, or agent runtime.
+
+## Agent interface
+
+Install the `mcp` extra and launch `hermes-tracker-mcp` with an agent token in its environment. The adapter provides repository/label discovery, issue search/read/create/update, comments and explicit reopen. Writes use caller-owned retry keys; edits require the latest issue revision. It exposes no execution or Git-close tools.
+
+See [MCP setup and interaction contracts](docs/mcp.md) for configuration, tool inputs, pagination, errors and safe retries. The HTTP API remains the authority and preserves compatibility with existing clients.
 
 ## Git closure
 
@@ -59,7 +65,8 @@ Protect raw tokens. The Git closer receives a separate token with only `git:clos
 ## Verify
 
 ```sh
-uv run pytest -q
+uv sync --extra dev --extra mcp
+uv run python -m pytest -q
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run mypy src/hermes_tracker

@@ -22,12 +22,14 @@ Repository = "https://git.thanosapollo.org/hermes-tracker"
 Issues = "https://todos.thanosapollo.org/r/hermes-tracker"
 
 [project.scripts]
+hermes-tracker-mcp = "hermes_tracker.mcp_server:main"
 hermes-tracker-migrate-v8-v9 = "hermes_tracker.migrate_v8_v9:main"
 hermes-tracker-sync-public-repos = "hermes_tracker.sync_repos:main"
 hermes-tracker-token = "hermes_tracker.token_cli:main"
 hermes-tracker-verify-v9-migration = "hermes_tracker.verify_v9_migration:main"
 
 [project.optional-dependencies]
+mcp = ["mcp>=2.2.0,<3", "httpx>=0.28.1,<0.29"]
 dev = [
     "build>=1.2.0,<2.0.0",
     "hatchling>=1.27.0,<2.0.0",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timedelta
 from typing import Any
 
 from .timeutil import utc_now
@@ -220,6 +221,16 @@ def list_repo_assignees(conn: sqlite3.Connection, repo_id: int) -> list[str]:
     ]
 
 
+def _next_update(previous: str) -> str:
+    """Advance durable issue time even under clock rollback/equal timestamps.
+
+    Revisions include this value, so an A→B→A edit cannot revive an old token.
+    """
+    now = datetime.fromisoformat(utc_now())
+    prior = datetime.fromisoformat(previous)
+    return max(now, prior + timedelta(microseconds=1)).isoformat()
+
+
 def update_todo(
     conn: sqlite3.Connection, todo_id: int, fields: dict[str, Any], *, commit: bool = True
 ) -> dict[str, Any] | None:
@@ -240,7 +251,7 @@ def update_todo(
     if "labels" in updates:
         updates["labels"] = json.dumps(updates["labels"])
     if updates:
-        updates["updated_at"] = utc_now()
+        updates["updated_at"] = _next_update(current["updated_at"])
         conn.execute(
             f"UPDATE todos SET {', '.join(f'{key}=?' for key in updates)} WHERE id=?",  # noqa: S608
             [*updates.values(), todo_id],
@@ -259,7 +270,10 @@ def close_todo_from_git(
     source_ref: str,
     actor: str,
 ) -> dict[str, Any] | None:
-    now = utc_now()
+    current = get_todo_by_id(conn, todo_id)
+    if current is None:
+        return None
+    now = _next_update(current["updated_at"])
     cursor = conn.execute(
         "UPDATE todos SET status='closed',updated_at=? WHERE id=? AND status='open'",
         (now, todo_id),

@@ -274,6 +274,7 @@ class CommentResponse(StrictModel):
 
 
 class TodoResponse(StrictModel):
+    revision: str
     id: int
     number: int
     repo_slug: str

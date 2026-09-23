@@ -93,11 +93,11 @@ def test_deployment_document_uses_only_canonical_runtime_identity() -> None:
     assert "agentum" not in deployment.lower()
 
 
-def test_project_excludes_removed_scanner_and_mcp_commands() -> None:
+def test_project_excludes_removed_scanner_and_registers_mcp() -> None:
     project = (PROJECT_ROOT / "pyproject.toml").read_text()
 
     assert "commit_scanner" not in project
-    assert "hermes-tracker-mcp" not in project
+    assert 'hermes-tracker-mcp = "hermes_tracker.mcp_server:main"' in project
     assert 'hermes-tracker-migrate-v8-v9 = "hermes_tracker.migrate_v8_v9:main"' in project
     assert (
         'hermes-tracker-verify-v9-migration = "hermes_tracker.verify_v9_migration:main"' in project

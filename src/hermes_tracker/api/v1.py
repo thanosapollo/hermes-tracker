@@ -57,6 +57,9 @@ SlugPath = Annotated[str, Path(min_length=1, max_length=100, pattern=r"^[a-zA-Z0
 TodoNumber = Annotated[int, Path(ge=1)]
 
 
+ExpectedRevision = Annotated[str | None, Header(alias="If-Match", pattern=r'^"[0-9a-f]{64}"$')]
+
+
 def create_v1_router(connection: Any, check_auth: Any, cgit_base: str | None) -> APIRouter:
     router = APIRouter(prefix="/api/v1", dependencies=[Depends(check_auth)])
     connection_dependency = Depends(connection)
@@ -85,13 +88,15 @@ def create_v1_router(connection: Any, check_auth: Any, cgit_base: str | None) ->
 
     def todo_response(conn: sqlite3.Connection, todo: dict[str, Any]) -> TodoResponse:
         repo = store.get_repo_by_id(conn, todo["repo_id"])
-        return TodoResponse(
+        payload = {
             **{key: value for key, value in todo.items() if key != "repo_id"},
-            repo_slug=repo["slug"] if repo else "",
-            comments=[
-                CommentResponse(**comment) for comment in store.list_comments(conn, todo["id"])
-            ],
-        )
+            "repo_slug": repo["slug"] if repo else "",
+            "comments": store.list_comments(conn, todo["id"]),
+        }
+        revision = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return TodoResponse(**payload, revision=revision)
 
     def mutate(
         conn: sqlite3.Connection,
@@ -103,10 +108,17 @@ def create_v1_router(connection: Any, check_auth: Any, cgit_base: str | None) ->
         status_code: int,
         key: str,
         actor: str,
+        expected_revision: str | None = None,
     ) -> BaseModel | JSONResponse:
+        # Preserve historical fingerprints for clients without a precondition.
+        fingerprint = {"actor": actor, "request": body.model_dump(mode="json")}
+        if expected_revision is not None:
+            fingerprint["if_match"] = expected_revision
+            # Omitted fields and explicit null have different PATCH semantics.
+            fingerprint["fields_set"] = sorted(body.model_fields_set)
         request_hash = hashlib.sha256(
             json.dumps(
-                {"actor": actor, "request": body.model_dump(mode="json")},
+                fingerprint,
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode()
@@ -120,10 +132,12 @@ def create_v1_router(connection: Any, check_auth: Any, cgit_base: str | None) ->
                         status_code=409,
                         detail="Idempotency key was already used with different input",
                     )
+                payload = json.loads(receipt["response_json"])
+                headers = {"X-Mutation-ID": receipt["mutation_id"]}
+                if "revision" in payload:
+                    headers["ETag"] = f'"{payload["revision"]}"'
                 return JSONResponse(
-                    content=json.loads(receipt["response_json"]),
-                    status_code=receipt["status_code"],
-                    headers={"X-Mutation-ID": receipt["mutation_id"]},
+                    content=payload, status_code=receipt["status_code"], headers=headers
                 )
             mutation_id = str(uuid4())
             result = action()
@@ -139,6 +153,8 @@ def create_v1_router(connection: Any, check_auth: Any, cgit_base: str | None) ->
                 response_json=json.dumps(payload, sort_keys=True, separators=(",", ":")),
             )
             response.headers["X-Mutation-ID"] = mutation_id
+            if isinstance(result, TodoResponse):
+                response.headers["ETag"] = f'"{result.revision}"'
             return result
 
         return transaction(conn, locked)
@@ -270,10 +286,20 @@ def create_v1_router(connection: Any, check_auth: Any, cgit_base: str | None) ->
 
     @router.get("/repos/{slug}/todos/{number}", response_model=TodoResponse)
     def get_todo(
-        slug: SlugPath, number: TodoNumber, conn: sqlite3.Connection = connection_dependency
+        slug: SlugPath,
+        number: TodoNumber,
+        response: Response,
+        conn: sqlite3.Connection = connection_dependency,
     ) -> TodoResponse:
-        repo = require_repo(conn, slug)
-        return todo_response(conn, require_todo(conn, repo["id"], number))
+        # One read snapshot for issue fields, closure provenance and discussion.
+        conn.execute("BEGIN")
+        try:
+            repo = require_repo(conn, slug)
+            result = todo_response(conn, require_todo(conn, repo["id"], number))
+        finally:
+            conn.rollback()
+        response.headers["ETag"] = f'"{result.revision}"'
+        return result
 
     @router.patch(
         "/repos/{slug}/todos/{number}",
@@ -288,12 +314,20 @@ def create_v1_router(connection: Any, check_auth: Any, cgit_base: str | None) ->
         request: Request,
         idempotency_key: IdempotencyKey,
         conn: sqlite3.Connection = connection_dependency,
+        expected_revision: ExpectedRevision = None,
     ) -> TodoResponse | JSONResponse:
         actor = principal_for_request(request).actor
 
         def action() -> TodoResponse:
             repo = require_repo(conn, slug)
             todo = require_todo(conn, repo["id"], number)
+            if expected_revision is not None:
+                current = todo_response(conn, todo)
+                if expected_revision != f'"{current.revision}"':
+                    raise HTTPException(
+                        status_code=412,
+                        detail="Stale revision; read the TODO again before editing",
+                    )
             fields = req.model_dump(exclude_unset=True, mode="json")
             if todo["status"] == "closed" and fields != {"status": "open"}:
                 raise HTTPException(
@@ -306,6 +340,7 @@ def create_v1_router(connection: Any, check_auth: Any, cgit_base: str | None) ->
         return mutate(
             conn,
             operation=f"update-todo:{slug}:{number}",
+            expected_revision=expected_revision,
             body=req,
             response=response,
             action=action,

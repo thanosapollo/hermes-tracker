@@ -12,7 +12,9 @@ See [MCP setup and interaction contracts](docs/mcp.md) for configuration, tool i
 
 ## Git closure
 
-A dedicated Gitolite hook credential calls `POST /api/v1/git-closures` automatically after an accepted canonical-ref push. Tracker atomically closes an open issue, stores a dedicated closure record with full commit/source provenance, and stores an idempotency receipt. Public UI renders only `Closed in commit <hash>.` with the hash linked to cgit. Missing and already-closed targets are safe no-ops.
+A dedicated Gitolite hook credential calls `POST /api/v1/git-closures` automatically after an accepted eligible branch push. Managed deployment defaults to the canonical branch; repositories may explicitly opt additional full branch refs into closure. Unconfigured branches and tags are inert. First publication of an eligible branch inspects its reachable history, including commits already present through other refs. Tracker atomically closes an open issue, stores a dedicated closure record with full commit/source provenance, and stores an idempotency receipt. Public UI renders only `Closed in commit <hash>.` with the hash linked to cgit. Missing and already-closed targets are safe no-ops; subsequent branch promotion preserves the first closure's source ref.
+
+Hook retry keys bind the source ref as well as commit and target. Repeated delivery on the same branch reuses its receipt; delivery through a different eligible branch uses a distinct receipt without replacing existing closure provenance. Failed deliveries retain their original source ref for durable replay, subject to the current repository/ref policy.
 
 Existing `verification_output` remains durable API evidence across updates, Git closure, and reopen; it is not part of the public closure line.
 

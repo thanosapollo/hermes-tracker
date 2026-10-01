@@ -519,6 +519,39 @@ def test_git_closure_authority_provenance_and_idempotency(
         assert forbidden not in page.text
 
 
+def test_branch_promotion_preserves_first_closure_provenance(
+    client: TestClient, connection_factory, settings: Settings
+) -> None:
+    create_repo(client)
+    create_todo(client)
+    hook = issue_token(connection_factory, "htk_git-hook-token", "git-hook", ["git:close"])
+    app = create_app(settings=settings, get_conn=connection_factory)
+    development = closure_body(source_ref="refs/heads/dev")
+    canonical = closure_body(source_ref="refs/heads/master")
+    with TestClient(app) as scoped:
+        first = scoped.post(
+            "/api/v1/git-closures", headers=keyed("development", hook), json=development
+        )
+        retry = scoped.post(
+            "/api/v1/git-closures", headers=keyed("development", hook), json=development
+        )
+        promotion = scoped.post(
+            "/api/v1/git-closures", headers=keyed("canonical", hook), json=canonical
+        )
+        conflicting_key = scoped.post(
+            "/api/v1/git-closures", headers=keyed("development", hook), json=canonical
+        )
+    assert first.json()["outcome"] == "closed"
+    assert retry.headers["X-Mutation-ID"] == first.headers["X-Mutation-ID"]
+    assert promotion.json()["outcome"] == "already_closed"
+    assert conflicting_key.status_code == 409
+    closed = issue(client)
+    assert closed["closing_source_ref"] == "refs/heads/dev"
+    assert closed["closing_commit"] == development["commit_sha"]
+    with connection_factory() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM todo_closures").fetchone()[0] == 1
+
+
 @pytest.mark.parametrize(
     "cgit_base",
     [
